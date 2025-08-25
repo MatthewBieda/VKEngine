@@ -1,0 +1,26 @@
+# Ignore build files
+/x64/
+/src/x64/
+/Debug/
+/Release/
+/ipch/
+/*.VC.db
+/*.VC.opendb
+
+# Ignore intermediate files
+*.obj
+*.tlog
+*.pch
+*.idb
+*.pdb
+*.ilk
+
+# Ignore VS user-specific files
+*.user
+*.suo
+/.vs/
+
+# Ignore temporary files
+*.log
+*.cache
+*.tmp
