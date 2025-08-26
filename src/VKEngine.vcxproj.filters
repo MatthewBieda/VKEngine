@@ -7,6 +7,9 @@
     <Filter Include="Header Files">
       <UniqueIdentifier>{17096eb4-f8dd-4f7a-9593-2883c898606c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{56de0138-a5a0-47c1-903d-b547860ded9d}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -16,6 +19,12 @@
   <ItemGroup>
     <None Include="..\.gitignore">
       <Filter>Source Files</Filter>
+    </None>
+    <None Include="..\Shaders\shader.vert">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\Shaders\shader.frag">
+      <Filter>Shaders</Filter>
     </None>
   </ItemGroup>
 </Project>
