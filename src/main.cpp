@@ -32,7 +32,7 @@ int main()
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	appInfo.pApplicationName = "VulkanApp";
 	appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-	appInfo.pEngineName = "VulkanEngine";
+	appInfo.pEngineName = "VKEngine";
 	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
 	appInfo.apiVersion = VK_API_VERSION_1_4;
 
@@ -88,7 +88,7 @@ int main()
 	}
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-	GLFWwindow* window = glfwCreateWindow(1920, 1080, "VulkanEngine", nullptr, nullptr);
+	GLFWwindow* window = glfwCreateWindow(1920, 1080, "VKEngine", nullptr, nullptr);
 
 	VkSurfaceKHR surface = nullptr;
 	VkResult err = glfwCreateWindowSurface(instance, window, nullptr, &surface);
@@ -231,6 +231,7 @@ int main()
 	VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures{};
 	dynamicRenderingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
 	dynamicRenderingFeatures.dynamicRendering = VK_TRUE;
+
 
 	// Specify logical device create info
 	VkDeviceCreateInfo deviceCreateInfo{};
@@ -565,22 +566,182 @@ int main()
 	vkDestroyShaderModule(device, fragmentShaderModule, nullptr);
 	vkDestroyShaderModule(device, vertexShaderModule, nullptr);
 
+	VkCommandPool commandPool = VK_NULL_HANDLE;
+	VkCommandPoolCreateInfo poolInfo{};
+	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	poolInfo.queueFamilyIndex = graphicsQueueFamilyIndex;
 
+	if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS)
+	{
+		std::cerr << "Failed to create command pool" << std::endl;
+		return -1;
+	}
+	std::cout << "Command Pool created successfully" << std::endl;
+
+	VkCommandBuffer commandBuffer;
+	VkCommandBufferAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandPool = commandPool;
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfo.commandBufferCount = 1;
+
+	if (vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer) != VK_SUCCESS)
+	{
+		std::cerr << "Failed to allocate command buffers" << std::endl;
+		return -1;
+	}
+	std::cout << "Command Buffer allocated successfully" << std::endl;
+
+	// Create Syncronization primitives
+	// One semaphore to signal that an image has been acquired from the swapchain and is ready for rendering
+	VkSemaphore imageAvailableSemaphore;
+
+	// One semaphore to signal that rendering has finished and presentation can happen
+	VkSemaphore renderFinishedSemaphore;
+
+	// One fence to make sure that only one frame is rendering at a time
+	VkFence inFlightFence;
+
+	VkSemaphoreCreateInfo semaphoreInfo{};
+	semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+	VkFenceCreateInfo fenceInfo{};
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+	if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS ||
+		vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS ||
+		vkCreateFence(device, &fenceInfo, nullptr, &inFlightFence) != VK_SUCCESS) 
+		{
+			std::cerr << "Failed to create syncronization objects" << std::endl;
+			return -1;
+		}
+	std::cout << "Syncronization primitives created successfully" << std::endl;
+
+	const int MAX_FRAMES_IN_FLIGHT = 2;
+	uint32_t currentFrame = 0;
 	while (!glfwWindowShouldClose(window))
 	{
 		glfwPollEvents();
+
+		vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
+		vkResetFences(device, 1, &inFlightFence);
+
+		uint32_t imageIndex;
+		vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+
+		vkResetCommandBuffer(commandBuffer, 0);
+
+		VkCommandBufferBeginInfo beginInfo{};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+		if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS)
+		{
+			std::cerr << "Failed to begin recording command buffer!" << std::endl;
+			return -1;
+		}
+		std::cout << "Command Buffer begun recording successfully" << std::endl;
+
+		VkRenderingAttachmentInfo colorAttachment{};
+		colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+		colorAttachment.imageView = swapChainImageViews[imageIndex];
+		colorAttachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR;
+		colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		colorAttachment.clearValue = { {0.0f, 0.0f, 0.0f, 1.0f} };
+
+		VkRenderingInfo renderingInfo{};
+		renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+		renderingInfo.renderArea.offset = { 0, 0 };
+		renderingInfo.renderArea.extent = surfaceCapabilities.currentExtent;
+		renderingInfo.layerCount = 1;  // <- required
+		renderingInfo.colorAttachmentCount = 1;
+		renderingInfo.pColorAttachments = &colorAttachment;
+
+		// Start dynamic rendering
+		vkCmdBeginRendering(commandBuffer, &renderingInfo);
+
+		// Bind pipeline, set dynamic state, issue draw
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+		// End rendering
+		vkCmdEndRendering(commandBuffer);
+
+		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
+		{
+			std::cerr << "Failed to end recording commands" << std::endl;
+			return -1;
+		}
+		std::cout << "Command Buffer recording ended successfully" << std::endl;
+
+		VkSubmitInfo submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+		VkSemaphore waitSemaphores[] = { imageAvailableSemaphore };
+		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+		submitInfo.waitSemaphoreCount = 1;
+		submitInfo.pWaitSemaphores = waitSemaphores;
+		submitInfo.pWaitDstStageMask = waitStages;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &commandBuffer;
+		VkSemaphore signalSemaphores[] = { renderFinishedSemaphore };
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = signalSemaphores;
+
+		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence) != VK_SUCCESS)
+		{
+			std::cerr << "Failed to submit draw command buffer" << std::endl;
+			return -1;
+		}
+		std::cout << "Draw command buffer submitted successfully" << std::endl;
+
+		VkPresentInfoKHR presentInfo{};
+		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		presentInfo.waitSemaphoreCount = 1;
+		presentInfo.pWaitSemaphores = signalSemaphores;
+		VkSwapchainKHR swapChains[] = { swapChain };
+		presentInfo.swapchainCount = 1;
+		presentInfo.pSwapchains = swapChains;
+		presentInfo.pImageIndices = &imageIndex;
+		presentInfo.pResults = nullptr;
+
+		vkQueuePresentKHR(graphicsQueue, &presentInfo);
+
+		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 
 	// Cleanup
+
+	// Wait for device to finish work
+	vkDeviceWaitIdle(device);
+
+	// Cleanup in reverse creation order
+	vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
+	vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
+	vkDestroyFence(device, inFlightFence, nullptr);
+
+	vkDestroyCommandPool(device, commandPool, nullptr);
+
 	vkDestroyPipeline(device, graphicsPipeline, nullptr);
 	vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+
 	for (const auto& imageView : swapChainImageViews)
 	{
 		vkDestroyImageView(device, imageView, nullptr);
 	}
+
 	vkDestroySwapchainKHR(device, swapChain, nullptr);
 	vkDestroyDevice(device, nullptr);
+
 	vkDestroySurfaceKHR(instance, surface, nullptr);
+
 	vkDestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+
 	vkDestroyInstance(instance, nullptr);
 }
