@@ -655,28 +655,23 @@ int main()
 		VkCommandBufferBeginInfo beginInfo{};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
-		if (vkBeginCommandBuffer(commandBuffers[currentFrame], &beginInfo) != VK_SUCCESS)
-		{
-			std::cerr << "Failed to begin recording command buffer!" << std::endl;
-			return -1;
-		}
-		//std::cout << "Command Buffer begun recording successfully" << std::endl;
+		vkBeginCommandBuffer(commandBuffers[currentFrame], &beginInfo);
 
 		// Transition swapchain image from UNDEFINED to COLOR_ATTACHMENT_OPTIMAL
-		VkImageMemoryBarrier imageBarrierToRendering{};
-		imageBarrierToRendering.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		imageBarrierToRendering.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		imageBarrierToRendering.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR;
-		imageBarrierToRendering.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		imageBarrierToRendering.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		imageBarrierToRendering.image = swapChainImages[imageIndex];
-		imageBarrierToRendering.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		imageBarrierToRendering.subresourceRange.baseMipLevel = 0;
-		imageBarrierToRendering.subresourceRange.levelCount = 1;
-		imageBarrierToRendering.subresourceRange.baseArrayLayer = 0;
-		imageBarrierToRendering.subresourceRange.layerCount = 1;
-		imageBarrierToRendering.srcAccessMask = 0;
-		imageBarrierToRendering.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		VkImageMemoryBarrier preRenderBarrier{};
+		preRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		preRenderBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		preRenderBarrier.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR;
+		preRenderBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		preRenderBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		preRenderBarrier.image = swapChainImages[imageIndex];
+		preRenderBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		preRenderBarrier.subresourceRange.baseMipLevel = 0;
+		preRenderBarrier.subresourceRange.levelCount = 1;
+		preRenderBarrier.subresourceRange.baseArrayLayer = 0;
+		preRenderBarrier.subresourceRange.layerCount = 1;
+		preRenderBarrier.srcAccessMask = 0;
+		preRenderBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
 		vkCmdPipelineBarrier(
 			commandBuffers[currentFrame],
@@ -685,7 +680,7 @@ int main()
 			0,
 			0, nullptr,
 			0, nullptr,
-			1, &imageBarrierToRendering
+			1, &preRenderBarrier
 		);
 
 		VkRenderingAttachmentInfo colorAttachment{};
@@ -717,20 +712,20 @@ int main()
 		vkCmdEndRendering(commandBuffers[currentFrame]);
 
 		// Transition swapchain image from COLOR_ATTACHMENT_OPTIMAL to PRESENT_SRC_KHR
-		VkImageMemoryBarrier imageBarrierToPresent{};
-		imageBarrierToPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		imageBarrierToPresent.oldLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR;
-		imageBarrierToPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-		imageBarrierToPresent.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		imageBarrierToPresent.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		imageBarrierToPresent.image = swapChainImages[imageIndex];
-		imageBarrierToPresent.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		imageBarrierToPresent.subresourceRange.baseMipLevel = 0;
-		imageBarrierToPresent.subresourceRange.levelCount = 1;
-		imageBarrierToPresent.subresourceRange.baseArrayLayer = 0;
-		imageBarrierToPresent.subresourceRange.layerCount = 1;
-		imageBarrierToPresent.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-		imageBarrierToPresent.dstAccessMask = 0;
+		VkImageMemoryBarrier postRenderBarrier{};
+		postRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		postRenderBarrier.oldLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR;
+		postRenderBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		postRenderBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		postRenderBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		postRenderBarrier.image = swapChainImages[imageIndex];
+		postRenderBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		postRenderBarrier.subresourceRange.baseMipLevel = 0;
+		postRenderBarrier.subresourceRange.levelCount = 1;
+		postRenderBarrier.subresourceRange.baseArrayLayer = 0;
+		postRenderBarrier.subresourceRange.layerCount = 1;
+		postRenderBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		postRenderBarrier.dstAccessMask = 0;
 
 		vkCmdPipelineBarrier(
 			commandBuffers[currentFrame],
@@ -739,16 +734,11 @@ int main()
 			0,
 			0, nullptr,
 			0, nullptr,
-			1, &imageBarrierToPresent
+			1, &postRenderBarrier
 		);
 
 
-		if (vkEndCommandBuffer(commandBuffers[currentFrame]) != VK_SUCCESS)
-		{
-			std::cerr << "Failed to end recording commands" << std::endl;
-			return -1;
-		}
-		//std::cout << "Command Buffer recording ended successfully" << std::endl;
+		vkEndCommandBuffer(commandBuffers[currentFrame]);
 
 		VkSubmitInfo submitInfo{};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -763,12 +753,7 @@ int main()
 		submitInfo.signalSemaphoreCount = 1;
 		submitInfo.pSignalSemaphores = signalSemaphores;
 
-		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS)
-		{
-			std::cerr << "Failed to submit draw command buffer" << std::endl;
-			return -1;
-		}
-		//std::cout << "Draw command buffer submitted successfully" << std::endl;
+		vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]);
 
 		VkPresentInfoKHR presentInfo{};
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -820,5 +805,4 @@ int main()
 	vkDestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
 
 	vkDestroyInstance(instance, nullptr);
-
 }
