@@ -27,6 +27,9 @@ int main()
 		return -1;
 	}
 
+	const int MAX_FRAMES_IN_FLIGHT = 2;
+	uint32_t currentFrame = 0;
+
 	// State application info and API version
 	VkApplicationInfo appInfo{};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -232,6 +235,13 @@ int main()
 	dynamicRenderingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
 	dynamicRenderingFeatures.dynamicRendering = VK_TRUE;
 
+	// Enable syncronization2 
+	VkPhysicalDeviceSynchronization2Features synchronization2Features{};
+	synchronization2Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
+	synchronization2Features.synchronization2 = VK_TRUE;
+
+	// Link the structs together
+	dynamicRenderingFeatures.pNext = &synchronization2Features;
 
 	// Specify logical device create info
 	VkDeviceCreateInfo deviceCreateInfo{};
@@ -579,14 +589,14 @@ int main()
 	}
 	std::cout << "Command Pool created successfully" << std::endl;
 
-	VkCommandBuffer commandBuffer;
+	std::vector<VkCommandBuffer> commandBuffers(MAX_FRAMES_IN_FLIGHT);
 	VkCommandBufferAllocateInfo allocInfo{};
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	allocInfo.commandPool = commandPool;
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	allocInfo.commandBufferCount = 1;
+	allocInfo.commandBufferCount = (uint32_t)commandBuffers.size();
 
-	if (vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer) != VK_SUCCESS)
+	if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS)
 	{
 		std::cerr << "Failed to allocate command buffers" << std::endl;
 		return -1;
@@ -594,14 +604,14 @@ int main()
 	std::cout << "Command Buffer allocated successfully" << std::endl;
 
 	// Create Syncronization primitives
-	// One semaphore to signal that an image has been acquired from the swapchain and is ready for rendering
-	VkSemaphore imageAvailableSemaphore;
+	// Semaphores to signal that an image has been acquired from the swapchain and is ready for rendering
+	std::vector<VkSemaphore> imageAvailableSemaphores(MAX_FRAMES_IN_FLIGHT);
 
-	// One semaphore to signal that rendering has finished and presentation can happen
-	VkSemaphore renderFinishedSemaphore;
+	// Semaphores to signal that rendering has finished and presentation can happen
+	std::vector<VkSemaphore> renderFinishedSemaphores(swapChainImages.size());
 
-	// One fence to make sure that only one frame is rendering at a time
-	VkFence inFlightFence;
+	// Fences to make sure that only one frame is rendering at a time
+	std::vector<VkFence> inFlightFences(MAX_FRAMES_IN_FLIGHT);
 
 	VkSemaphoreCreateInfo semaphoreInfo{};
 	semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -610,38 +620,73 @@ int main()
 	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-	if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS ||
-		vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS ||
-		vkCreateFence(device, &fenceInfo, nullptr, &inFlightFence) != VK_SUCCESS) 
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+	{
+		if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
+			vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS)
 		{
-			std::cerr << "Failed to create syncronization objects" << std::endl;
+			std::cerr << "Failed to create syncronization objects for frame: " << i << std::endl;
 			return -1;
 		}
-	std::cout << "Syncronization primitives created successfully" << std::endl;
+		std::cout << "Syncronization primitives for frame: " << i << " created successfully" << std::endl;
+	}
 
-	const int MAX_FRAMES_IN_FLIGHT = 2;
-	uint32_t currentFrame = 0;
+	for (size_t i = 0; i < swapChainImages.size(); ++i)
+	{
+		if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS)
+		{
+			std::cerr << "Failed to create render finished semaphore: " << i << std::endl;
+			return -1;
+		}
+		std::cout << "Render finished semaphore for frame: " << i << " created successfully" << std::endl;
+	}
+
 	while (!glfwWindowShouldClose(window))
 	{
 		glfwPollEvents();
 
-		vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
-		vkResetFences(device, 1, &inFlightFence);
+		vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+		vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
 		uint32_t imageIndex;
-		vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
-
-		vkResetCommandBuffer(commandBuffer, 0);
+		vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+		vkResetCommandBuffer(commandBuffers[currentFrame], 0);
 
 		VkCommandBufferBeginInfo beginInfo{};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
-		if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS)
+		if (vkBeginCommandBuffer(commandBuffers[currentFrame], &beginInfo) != VK_SUCCESS)
 		{
 			std::cerr << "Failed to begin recording command buffer!" << std::endl;
 			return -1;
 		}
-		std::cout << "Command Buffer begun recording successfully" << std::endl;
+		//std::cout << "Command Buffer begun recording successfully" << std::endl;
+
+		// Transition swapchain image from UNDEFINED to COLOR_ATTACHMENT_OPTIMAL
+		VkImageMemoryBarrier imageBarrierToRendering{};
+		imageBarrierToRendering.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		imageBarrierToRendering.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		imageBarrierToRendering.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR;
+		imageBarrierToRendering.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		imageBarrierToRendering.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		imageBarrierToRendering.image = swapChainImages[imageIndex];
+		imageBarrierToRendering.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		imageBarrierToRendering.subresourceRange.baseMipLevel = 0;
+		imageBarrierToRendering.subresourceRange.levelCount = 1;
+		imageBarrierToRendering.subresourceRange.baseArrayLayer = 0;
+		imageBarrierToRendering.subresourceRange.layerCount = 1;
+		imageBarrierToRendering.srcAccessMask = 0;
+		imageBarrierToRendering.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+		vkCmdPipelineBarrier(
+			commandBuffers[currentFrame],
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrierToRendering
+		);
 
 		VkRenderingAttachmentInfo colorAttachment{};
 		colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -660,46 +705,70 @@ int main()
 		renderingInfo.pColorAttachments = &colorAttachment;
 
 		// Start dynamic rendering
-		vkCmdBeginRendering(commandBuffer, &renderingInfo);
+		vkCmdBeginRendering(commandBuffers[currentFrame], &renderingInfo);
 
 		// Bind pipeline, set dynamic state, issue draw
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
-
-		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+		vkCmdBindPipeline(commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+		vkCmdSetViewport(commandBuffers[currentFrame], 0, 1, &viewport);
+		vkCmdSetScissor(commandBuffers[currentFrame], 0, 1, &scissor);
+		vkCmdDraw(commandBuffers[currentFrame], 3, 1, 0, 0);
 
 		// End rendering
-		vkCmdEndRendering(commandBuffer);
+		vkCmdEndRendering(commandBuffers[currentFrame]);
 
-		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
+		// Transition swapchain image from COLOR_ATTACHMENT_OPTIMAL to PRESENT_SRC_KHR
+		VkImageMemoryBarrier imageBarrierToPresent{};
+		imageBarrierToPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		imageBarrierToPresent.oldLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR;
+		imageBarrierToPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		imageBarrierToPresent.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		imageBarrierToPresent.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		imageBarrierToPresent.image = swapChainImages[imageIndex];
+		imageBarrierToPresent.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		imageBarrierToPresent.subresourceRange.baseMipLevel = 0;
+		imageBarrierToPresent.subresourceRange.levelCount = 1;
+		imageBarrierToPresent.subresourceRange.baseArrayLayer = 0;
+		imageBarrierToPresent.subresourceRange.layerCount = 1;
+		imageBarrierToPresent.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		imageBarrierToPresent.dstAccessMask = 0;
+
+		vkCmdPipelineBarrier(
+			commandBuffers[currentFrame],
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrierToPresent
+		);
+
+
+		if (vkEndCommandBuffer(commandBuffers[currentFrame]) != VK_SUCCESS)
 		{
 			std::cerr << "Failed to end recording commands" << std::endl;
 			return -1;
 		}
-		std::cout << "Command Buffer recording ended successfully" << std::endl;
+		//std::cout << "Command Buffer recording ended successfully" << std::endl;
 
 		VkSubmitInfo submitInfo{};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-		VkSemaphore waitSemaphores[] = { imageAvailableSemaphore };
+		VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame]};
 		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 		submitInfo.waitSemaphoreCount = 1;
 		submitInfo.pWaitSemaphores = waitSemaphores;
 		submitInfo.pWaitDstStageMask = waitStages;
 		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &commandBuffer;
-		VkSemaphore signalSemaphores[] = { renderFinishedSemaphore };
+		submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
+		VkSemaphore signalSemaphores[] = { renderFinishedSemaphores[imageIndex]};
 		submitInfo.signalSemaphoreCount = 1;
 		submitInfo.pSignalSemaphores = signalSemaphores;
 
-		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence) != VK_SUCCESS)
+		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS)
 		{
 			std::cerr << "Failed to submit draw command buffer" << std::endl;
 			return -1;
 		}
-		std::cout << "Draw command buffer submitted successfully" << std::endl;
+		//std::cout << "Draw command buffer submitted successfully" << std::endl;
 
 		VkPresentInfoKHR presentInfo{};
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -722,9 +791,16 @@ int main()
 	vkDeviceWaitIdle(device);
 
 	// Cleanup in reverse creation order
-	vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
-	vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
-	vkDestroyFence(device, inFlightFence, nullptr);
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+	{
+		vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
+		vkDestroyFence(device, inFlightFences[i], nullptr);
+	}
+
+	for (size_t i = 0; i < swapChainImages.size(); ++i)
+	{
+		vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
+	}
 
 	vkDestroyCommandPool(device, commandPool, nullptr);
 
@@ -744,4 +820,5 @@ int main()
 	vkDestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
 
 	vkDestroyInstance(instance, nullptr);
+
 }
