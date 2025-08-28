@@ -658,8 +658,12 @@ int main()
 		vkBeginCommandBuffer(commandBuffers[currentFrame], &beginInfo);
 
 		// Transition swapchain image from UNDEFINED to COLOR_ATTACHMENT_OPTIMAL
-		VkImageMemoryBarrier preRenderBarrier{};
-		preRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		VkImageMemoryBarrier2 preRenderBarrier{};
+		preRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+		preRenderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+		preRenderBarrier.srcAccessMask = 0;
+		preRenderBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+		preRenderBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
 		preRenderBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		preRenderBarrier.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR;
 		preRenderBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -670,18 +674,13 @@ int main()
 		preRenderBarrier.subresourceRange.levelCount = 1;
 		preRenderBarrier.subresourceRange.baseArrayLayer = 0;
 		preRenderBarrier.subresourceRange.layerCount = 1;
-		preRenderBarrier.srcAccessMask = 0;
-		preRenderBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
-		vkCmdPipelineBarrier(
-			commandBuffers[currentFrame],
-			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-			0,
-			0, nullptr,
-			0, nullptr,
-			1, &preRenderBarrier
-		);
+		VkDependencyInfo preDepInfo{};
+		preDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+		preDepInfo.imageMemoryBarrierCount = 1;
+		preDepInfo.pImageMemoryBarriers = &preRenderBarrier;
+
+		vkCmdPipelineBarrier2(commandBuffers[currentFrame], &preDepInfo);
 
 		VkRenderingAttachmentInfo colorAttachment{};
 		colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -712,8 +711,12 @@ int main()
 		vkCmdEndRendering(commandBuffers[currentFrame]);
 
 		// Transition swapchain image from COLOR_ATTACHMENT_OPTIMAL to PRESENT_SRC_KHR
-		VkImageMemoryBarrier postRenderBarrier{};
-		postRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		VkImageMemoryBarrier2 postRenderBarrier{};
+		postRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+		postRenderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+		postRenderBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+		postRenderBarrier.dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+		postRenderBarrier.dstAccessMask = 0;
 		postRenderBarrier.oldLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR;
 		postRenderBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 		postRenderBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -724,41 +727,47 @@ int main()
 		postRenderBarrier.subresourceRange.levelCount = 1;
 		postRenderBarrier.subresourceRange.baseArrayLayer = 0;
 		postRenderBarrier.subresourceRange.layerCount = 1;
-		postRenderBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-		postRenderBarrier.dstAccessMask = 0;
 
-		vkCmdPipelineBarrier(
-			commandBuffers[currentFrame],
-			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-			0,
-			0, nullptr,
-			0, nullptr,
-			1, &postRenderBarrier
-		);
+		VkDependencyInfo postDepInfo{};
+		postDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+		postDepInfo.imageMemoryBarrierCount = 1;
+		postDepInfo.pImageMemoryBarriers = &postRenderBarrier;
 
+		vkCmdPipelineBarrier2(commandBuffers[currentFrame], &postDepInfo);
 
 		vkEndCommandBuffer(commandBuffers[currentFrame]);
 
-		VkSubmitInfo submitInfo{};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame]};
-		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-		submitInfo.waitSemaphoreCount = 1;
-		submitInfo.pWaitSemaphores = waitSemaphores;
-		submitInfo.pWaitDstStageMask = waitStages;
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
-		VkSemaphore signalSemaphores[] = { renderFinishedSemaphores[imageIndex]};
-		submitInfo.signalSemaphoreCount = 1;
-		submitInfo.pSignalSemaphores = signalSemaphores;
+		VkSubmitInfo2 submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
 
-		vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]);
+		VkSemaphoreSubmitInfo waitSemaphoreInfo{};
+		waitSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+		waitSemaphoreInfo.semaphore = imageAvailableSemaphores[currentFrame];
+		waitSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+		VkCommandBufferSubmitInfo cmdBufferInfo{};
+		cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+		cmdBufferInfo.commandBuffer = commandBuffers[currentFrame];
+
+		VkSemaphoreSubmitInfo signalSemaphoreInfo{};
+		signalSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+		signalSemaphoreInfo.semaphore = renderFinishedSemaphores[imageIndex];
+		signalSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+
+		submitInfo.waitSemaphoreInfoCount = 1;
+		submitInfo.pWaitSemaphoreInfos = &waitSemaphoreInfo;
+		submitInfo.commandBufferInfoCount = 1;
+		submitInfo.pCommandBufferInfos = &cmdBufferInfo;
+		submitInfo.signalSemaphoreInfoCount = 1;
+		submitInfo.pSignalSemaphoreInfos = &signalSemaphoreInfo;
+
+		vkQueueSubmit2(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]);
 
 		VkPresentInfoKHR presentInfo{};
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 		presentInfo.waitSemaphoreCount = 1;
-		presentInfo.pWaitSemaphores = signalSemaphores;
+		VkSemaphore presentWaitSemaphores[] = { renderFinishedSemaphores[imageIndex] };
+		presentInfo.pWaitSemaphores = presentWaitSemaphores;
 		VkSwapchainKHR swapChains[] = { swapChain };
 		presentInfo.swapchainCount = 1;
 		presentInfo.pSwapchains = swapChains;
