@@ -1,0 +1,40 @@
+#pragma once
+#include <string>
+#include <vector>
+
+#include "volk.h"
+
+class VulkanContext;
+class Swapchain;
+
+class Pipeline
+{
+public:
+	Pipeline(VulkanContext& context, Swapchain& swapchain, const std::string& vertPath, const std::string& fragPath);
+	~Pipeline();
+
+	Pipeline(const Pipeline&) = delete;
+	Pipeline& operator=(const Pipeline&) = delete;
+	Pipeline(Pipeline&&) = delete;
+	Pipeline& operator=(Pipeline&&) = delete;
+
+	void setViewport(VkCommandBuffer cmdBuffer, VkViewport viewport);
+	void setScissor(VkCommandBuffer cmdBuffer, VkRect2D scissor);
+
+	VkPipeline getPipeline() const { return m_pipeline; }
+	VkPipelineLayout getLayout() const { return m_layout; }
+
+private:
+	VkShaderModule createShaderModule(const std::vector<char>& code);
+	std::vector<char> readFile(const std::string& filename);
+	void createPipeline(const std::string& vertPath, const std::string& fragPath, VkFormat colorFormat);
+
+	VulkanContext& m_context;
+	Swapchain& m_swapchain;
+
+	VkPipelineLayout m_layout = VK_NULL_HANDLE;
+	VkPipeline m_pipeline = VK_NULL_HANDLE;
+
+	static constexpr float DEFAULT_LINE_WIDTH = 1.0f;
+	static constexpr VkSampleCountFlagBits DEFAULT_SAMPLES = VK_SAMPLE_COUNT_1_BIT;
+};
