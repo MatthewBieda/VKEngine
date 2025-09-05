@@ -5,11 +5,15 @@
 #include "glfw3.h"
 
 #include "VulkanContext.hpp" // Instance, device, surface, debug messenger
-#include "Swapchain.hpp" // Swapchain, image views, framebuffers
+#include "Swapchain.hpp" // Swapchain, image views
 #include "Pipeline.hpp" // Shaders, pipeline layout, pipeline
 #include "Commands.hpp" // Command pool & Command buffers
 #include "Sync.hpp" // Semaphores & Fences
-#include "Utils.hpp" // Helper functions (e.g. readfile for SPIR-V)
+
+//TODO:
+//GPUBuffer           // Vertex, index, uniform, storage buffers
+//GPUTexture          // Image + View + Sampler
+//DescriptorManager   // Bindless textures, push descriptors
 
 // Only init + run loop
 int main()

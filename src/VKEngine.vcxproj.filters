@@ -44,6 +44,9 @@
     <None Include="..\Shaders\shader.frag">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="..\README.md">
+      <Filter>Source Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Include\VulkanContext.hpp">
