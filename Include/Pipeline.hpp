@@ -1,8 +1,11 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <array>
 
 #include "volk.h"
+
+#include "glm.hpp"
 
 class VulkanContext;
 class Swapchain;

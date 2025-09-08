@@ -1,9 +1,11 @@
 #include "Pipeline.hpp"
 #include "VulkanContext.hpp" 
 #include "Swapchain.hpp"
+#include "Vertex.hpp"
 
 #include <fstream>
 #include <iostream>
+#include <array>
 
 Pipeline::Pipeline(VulkanContext& context, Swapchain& swapchain, const std::string& vertPath, const std::string& fragPath)
 	: m_context(context), m_swapchain(swapchain)
@@ -93,12 +95,15 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 	dynamicStateInfo.pDynamicStates = dynamicStates.data();
 
 	// Fixed-function state (vertex input, input assembly, viewport, rasterizer, multisample, color blend)
+	auto bindingDescription = Vertex::getBindingDescription();
+	auto attributeDescriptions = Vertex::getAttributeDescription();
+
 	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 	vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	vertexInputInfo.vertexBindingDescriptionCount = 0;
-	vertexInputInfo.pVertexBindingDescriptions = nullptr;
-	vertexInputInfo.vertexAttributeDescriptionCount = 0;
-	vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+	vertexInputInfo.vertexBindingDescriptionCount = 1;
+	vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+	vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+	vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo{};
 	inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;

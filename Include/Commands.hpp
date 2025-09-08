@@ -11,6 +11,7 @@ public:
 	Commands(VulkanContext& context, uint32_t maxFramesInFlight);
 	~Commands();
 
+	VkCommandPool getCommandPool() const { return m_commandPool; }
 	VkCommandBuffer getCommandBuffer(uint32_t frameIndex) const { return m_commandBuffers[frameIndex]; }
 
 private:

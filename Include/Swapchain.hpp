@@ -15,6 +15,8 @@ public:
 	Swapchain(Swapchain&&) = delete;
 	Swapchain& operator=(Swapchain&&) = delete;
 
+	~Swapchain();
+
 	VkSwapchainKHR getSwapchain() const { return m_swapchain; }
 	VkFormat getFormat() const { return m_format; }
 	VkExtent2D getExtent() const { return m_extent; }
@@ -25,7 +27,6 @@ public:
 	VkImage getSwapchainImage(uint32_t frameIndex) const { return m_images[frameIndex]; }
 	VkImageView getSwapchainImageView(uint32_t frameIndex) const { return m_imageViews[frameIndex]; }
 
-	~Swapchain();
 private:
 	void querySurfaceCapabilities();
 	void pickSurfaceFormat();

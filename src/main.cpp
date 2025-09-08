@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <array>
 
 #include "glfw3.h"
 
@@ -9,11 +10,24 @@
 #include "Pipeline.hpp" // Shaders, pipeline layout, pipeline
 #include "Commands.hpp" // Command pool & Command buffers
 #include "Sync.hpp" // Semaphores & Fences
-
-//TODO:
-//GPUBuffer           // Vertex, index, uniform, storage buffers
+#include "GPUBuffer.hpp" // Vertex, index, uniform, storage buffers
+#include "Vertex.hpp"
+ 
+//TODO
 //GPUTexture          // Image + View + Sampler
 //DescriptorManager   // Bindless textures, push descriptors
+
+
+const std::vector<Vertex> vertices = {
+	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+	{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+	{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+	{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+};
+
+const std::vector<uint16_t> indices = {
+	0, 1, 2, 2, 3, 0
+};
 
 // Only init + run loop
 int main()
@@ -35,6 +49,7 @@ int main()
 	Pipeline pipeline(context, swapchain, "../Shaders/vert.spv", "../Shaders/frag.spv");
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
+	GPUBuffer buffer(context, commands, vertices, indices);
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -118,7 +133,13 @@ int main()
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getPipeline());
 		pipeline.setViewport(cmd, viewport);
 		pipeline.setScissor(cmd, scissor);
-		vkCmdDraw(cmd, 3, 1, 0, 0);
+
+		VkBuffer vertexBuffers[] = { buffer.getVertexBuffer() };
+		VkDeviceSize offsets[] = { 0 };
+		vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
+		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+
+		vkCmdDrawIndexed(cmd, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
 		// End dynamic rendering
 		vkCmdEndRendering(cmd);
