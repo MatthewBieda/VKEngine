@@ -1,6 +1,12 @@
+#define VK_NO_PROTOTYPES
 #define VOLK_IMPLEMENTATION
 
+#define VMA_IMPLEMENTATION
+
+#include "vk_mem_alloc.h"
+
 #include "VulkanContext.hpp"
+
 #include <iostream>
 #include <vector>
 
@@ -9,7 +15,6 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VulkanContext::debugCallback(VkDebugUtilsMessageS
 	std::cerr << "Validation Layer: " << pCallbackData->pMessage << std::endl;
 	return VK_FALSE;
 }
-
 
 VulkanContext::VulkanContext(GLFWwindow* window) : m_window(window)
 {
@@ -24,11 +29,13 @@ VulkanContext::VulkanContext(GLFWwindow* window) : m_window(window)
 	createSurface();
 	pickPhysicalDevice();
 	createLogicalDevice();
+	createAllocator();
 	volkLoadDevice(m_device);
 }
 
 VulkanContext::~VulkanContext()
 {
+	vmaDestroyAllocator(m_allocator);
 	vkDestroyDevice(m_device, nullptr);
 	vkDestroyDebugUtilsMessengerEXT(m_instance, m_debugMessenger, nullptr);
 	vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
@@ -243,4 +250,24 @@ void VulkanContext::createLogicalDevice()
 	vkGetDeviceQueue(m_device, m_graphicsQueueFamilyIndex, 0, &m_graphicsQueue);
 
 	std::cout << "Logical device and graphics queue created successfully" << std::endl;
+}
+
+void VulkanContext::createAllocator()
+{
+	// Set up VMA Vulkan function pointers for Volk
+	VmaVulkanFunctions vulkanFunctions{};
+	vulkanFunctions.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
+	vulkanFunctions.vkGetDeviceProcAddr = vkGetDeviceProcAddr;
+	// Other functions can be loaded automatically using these
+
+	VmaAllocatorCreateInfo allocatorInfo{};
+	allocatorInfo.physicalDevice = m_physicalDevice;
+	allocatorInfo.device = m_device;
+	allocatorInfo.instance = m_instance;
+	allocatorInfo.pVulkanFunctions = &vulkanFunctions;
+
+	if (vmaCreateAllocator(&allocatorInfo, &m_allocator) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create Vulkan Memory Allocator");
+	};
 }

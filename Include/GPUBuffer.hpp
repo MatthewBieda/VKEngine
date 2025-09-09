@@ -3,6 +3,8 @@
 #include "volk.h"
 #include "Vertex.hpp"
 
+#include "vk_mem_alloc.h"
+
 #include <vector>
 
 class VulkanContext;
@@ -22,14 +24,13 @@ private:
 	Commands& m_commands;
 
 	VkBuffer m_vertexBuffer = VK_NULL_HANDLE;
-	VkBuffer m_indexBuffer = VK_NULL_HANDLE;
-	VkDeviceMemory m_vertexBufferMemory = VK_NULL_HANDLE;
-	VkDeviceMemory m_indexBufferMemory = VK_NULL_HANDLE;
-	VkPhysicalDeviceMemoryProperties m_memProperties{};
+	VmaAllocation m_vertexAllocation = VK_NULL_HANDLE;
 
-	void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
+	VkBuffer m_indexBuffer = VK_NULL_HANDLE;
+	VmaAllocation m_indexAllocation = VK_NULL_HANDLE;
+
 	void createVertexBuffer(const std::vector<Vertex>& vertices);
-	void createIndexBuffer(const std::vector<uint16_t> indices);
+	void createIndexBuffer(const std::vector<uint16_t>& indices);
+
 	void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
-	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 };

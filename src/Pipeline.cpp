@@ -173,7 +173,7 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 	VkPipelineRenderingCreateInfo renderingInfo{};
 	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
 	renderingInfo.colorAttachmentCount = 1;
-	VkFormat colorAttachmentFormat = m_swapchain.getFormat();
+	VkFormat colorAttachmentFormat = colorFormat;
 	renderingInfo.pColorAttachmentFormats = &colorAttachmentFormat;
 
 	VkGraphicsPipelineCreateInfo graphicsPipelineInfo{};

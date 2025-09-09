@@ -3,6 +3,8 @@
 #include "volk.h"
 #include <GLFW/glfw3.h>
 
+#include "vk_mem_alloc.h"
+
 class VulkanContext
 {
 public:
@@ -21,6 +23,7 @@ public:
 	VkQueue getGraphicsQueue() const { return m_graphicsQueue; }
 	int getGraphicsQueueFamilyIndex() const { return m_graphicsQueueFamilyIndex; }
 	VkSurfaceKHR getSurface() const { return m_surface; }
+	VmaAllocator getAllocator() const { return m_allocator; }
 
 private:
 	void initInstance();
@@ -28,6 +31,7 @@ private:
 	void createSurface();
 	void pickPhysicalDevice();
 	void createLogicalDevice();
+	void createAllocator();
 
 	VkInstance m_instance = VK_NULL_HANDLE;
 	VkDebugUtilsMessengerEXT m_debugMessenger = VK_NULL_HANDLE;
@@ -37,10 +41,12 @@ private:
 	VkQueue m_presentQueue = VK_NULL_HANDLE;
 	VkSurfaceKHR m_surface = VK_NULL_HANDLE;
 
+	VmaAllocator m_allocator = VK_NULL_HANDLE;
+
 	GLFWwindow* m_window;
 	
-	uint32_t m_graphicsQueueFamilyIndex = -1;
-	uint32_t m_presentQueueFamilyIndex = -1;
+	int32_t m_graphicsQueueFamilyIndex = -1;
+	int32_t m_presentQueueFamilyIndex = -1;
 
 	// Validation layer callback
 	static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
