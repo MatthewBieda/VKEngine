@@ -137,6 +137,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Commands.cpp" />
+    <ClCompile Include="DescriptorManager.cpp" />
     <ClCompile Include="GPUBuffer.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Pipeline.cpp" />
@@ -153,6 +154,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Include\Commands.hpp" />
+    <ClInclude Include="..\Include\DescriptorManager.hpp" />
     <ClInclude Include="..\Include\GPUBuffer.hpp" />
     <ClInclude Include="..\Include\Pipeline.hpp" />
     <ClInclude Include="..\Include\Swapchain.hpp" />

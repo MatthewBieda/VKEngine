@@ -9,13 +9,13 @@
 #include "Swapchain.hpp" // Swapchain, image views
 #include "Pipeline.hpp" // Shaders, pipeline layout, pipeline
 #include "Commands.hpp" // Command pool & Command buffers
+#include "DescriptorManager.hpp"   // Bindless textures, push descriptors
 #include "Sync.hpp" // Semaphores & Fences
 #include "GPUBuffer.hpp" // Vertex, index, uniform, storage buffers
-#include "Vertex.hpp"
+#include "Vertex.hpp" // Vertex definiton
  
 //TODO
-//GPUTexture          // Image + View + Sampler
-//DescriptorManager   // Bindless textures, push descriptors
+//GPUTexture  // Image + View + Sampler
 
 const std::vector<Vertex> vertices = {
 	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
@@ -27,6 +27,13 @@ const std::vector<Vertex> vertices = {
 const std::vector<uint16_t> indices = {
 	0, 1, 2, 2, 3, 0
 };
+
+// MVP Matrix
+struct UniformBufferObject {
+	glm::mat4 model;
+	glm::mat4 view;
+	glm::mat4 proj;
+} UBO;
 
 // Only init + run loop
 int main()
@@ -45,10 +52,11 @@ int main()
 
 	VulkanContext context(window);
 	Swapchain swapchain(context);
+	DescriptorManager descriptors;
 	Pipeline pipeline(context, swapchain, "../Shaders/vert.spv", "../Shaders/frag.spv");
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
-	GPUBuffer buffer(context, commands, vertices, indices);
+	GPUBuffer buffer(context, commands, vertices, indices, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
 
 	while (!glfwWindowShouldClose(window))
 	{
