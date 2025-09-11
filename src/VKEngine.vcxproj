@@ -103,7 +103,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)Include;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)Include;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <TreatWarningAsError>true</TreatWarningAsError>
@@ -123,7 +123,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)Include;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)Include;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <TreatWarningAsError>true</TreatWarningAsError>
@@ -139,6 +139,7 @@
     <ClCompile Include="Commands.cpp" />
     <ClCompile Include="DescriptorManager.cpp" />
     <ClCompile Include="GPUBuffer.cpp" />
+    <ClCompile Include="GPUImage.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Pipeline.cpp" />
     <ClCompile Include="Swapchain.cpp" />
@@ -156,6 +157,7 @@
     <ClInclude Include="..\Include\Commands.hpp" />
     <ClInclude Include="..\Include\DescriptorManager.hpp" />
     <ClInclude Include="..\Include\GPUBuffer.hpp" />
+    <ClInclude Include="..\Include\GPUImage.hpp" />
     <ClInclude Include="..\Include\Pipeline.hpp" />
     <ClInclude Include="..\Include\Swapchain.hpp" />
     <ClInclude Include="..\Include\Sync.hpp" />

@@ -17,10 +17,8 @@
 #include "DescriptorManager.hpp"   // Bindless textures, push descriptors
 #include "Sync.hpp" // Semaphores & Fences
 #include "GPUBuffer.hpp" // Vertex, index, uniform, storage buffers
+#include "GPUImage.hpp"  // Image + ImageView + Sampler
 #include "Vertex.hpp" // Vertex definiton
- 
-//TODO
-//GPUTexture  // Image + View + Sampler
 
 const std::vector<Vertex> vertices = {
 	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
@@ -64,6 +62,7 @@ int main()
 	Swapchain swapchain(context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
 	GPUBuffer buffer(context, commands, vertices, indices, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
+	GPUImage image(context);
 	DescriptorManager descriptors(context, buffer, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
 	Pipeline pipeline(context, swapchain, descriptors, "../Shaders/vert.spv", "../Shaders/frag.spv");
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
