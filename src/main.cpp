@@ -5,6 +5,11 @@
 
 #include "glfw3.h"
 
+#define GLM_FORCE_RADIANS
+#include "glm.hpp"
+#include "gtc/matrix_transform.hpp"
+#include "chrono"
+
 #include "VulkanContext.hpp" // Instance, device, surface, debug messenger
 #include "Swapchain.hpp" // Swapchain, image views
 #include "Pipeline.hpp" // Shaders, pipeline layout, pipeline
@@ -35,6 +40,11 @@ struct UniformBufferObject {
 	glm::mat4 proj;
 } UBO;
 
+uint32_t windowWidth = 1920;
+uint32_t windowHeight = 1080;
+
+void updateUniformBuffer(uint32_t currentFrame, GPUBuffer& buffer);
+
 // Only init + run loop
 int main()
 {
@@ -48,15 +58,15 @@ int main()
 	}
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-	GLFWwindow* window = glfwCreateWindow(1920, 1080, "VKEngine", nullptr, nullptr);
+	GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "VKEngine", nullptr, nullptr);
 
 	VulkanContext context(window);
 	Swapchain swapchain(context);
-	DescriptorManager descriptors;
-	Pipeline pipeline(context, swapchain, "../Shaders/vert.spv", "../Shaders/frag.spv");
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
-	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
 	GPUBuffer buffer(context, commands, vertices, indices, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
+	DescriptorManager descriptors(context, buffer, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
+	Pipeline pipeline(context, swapchain, descriptors, "../Shaders/vert.spv", "../Shaders/frag.spv");
+	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -146,6 +156,9 @@ int main()
 		vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
 		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
 
+		VkDescriptorSet currDescriptorSet = descriptors.getDescriptorSet(currentFrame);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getLayout(), 0, 1, &currDescriptorSet, 0, nullptr);
+
 		vkCmdDrawIndexed(cmd, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
 		// End dynamic rendering
@@ -177,6 +190,8 @@ int main()
 		vkCmdPipelineBarrier2(commands.getCommandBuffer(currentFrame), &postDepInfo);
 
 		vkEndCommandBuffer(commands.getCommandBuffer(currentFrame));
+
+		updateUniformBuffer(currentFrame, buffer);
 
 		// Submit
 		VkSubmitInfo2 submitInfo{};
@@ -231,4 +246,20 @@ int main()
 	glfwTerminate();
 
 	return 0;
+}
+
+void updateUniformBuffer(uint32_t currentFrame, GPUBuffer& buffer)
+{
+	static auto startTime = std::chrono::high_resolution_clock::now();
+
+	auto currentTime = std::chrono::high_resolution_clock::now();
+	float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+	UBO.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	UBO.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	UBO.proj = glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 10.0f);
+	// Flip Y scaling factor for Vulkan compatibility with GLM
+	UBO.proj[1][1] *= -1;
+
+	buffer.updateUniformBuffer(currentFrame, &UBO, sizeof(UBO));
 }

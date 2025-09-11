@@ -1,14 +1,15 @@
 #include "Pipeline.hpp"
 #include "VulkanContext.hpp" 
 #include "Swapchain.hpp"
+#include "DescriptorManager.hpp"
 #include "Vertex.hpp"
 
 #include <fstream>
 #include <iostream>
 #include <array>
 
-Pipeline::Pipeline(VulkanContext& context, Swapchain& swapchain, const std::string& vertPath, const std::string& fragPath)
-	: m_context(context), m_swapchain(swapchain)
+Pipeline::Pipeline(VulkanContext& context, Swapchain& swapchain, DescriptorManager& descriptors, const std::string& vertPath, const std::string& fragPath)
+	: m_context(context), m_swapchain(swapchain), m_descriptors(descriptors)
 {
 	createPipeline(vertPath, fragPath, m_swapchain.getFormat());
 }
@@ -134,7 +135,7 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 	rasterizerInfo.polygonMode = VK_POLYGON_MODE_FILL;
 	rasterizerInfo.lineWidth = DEFAULT_LINE_WIDTH;
 	rasterizerInfo.cullMode = VK_CULL_MODE_BACK_BIT;
-	rasterizerInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	rasterizerInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterizerInfo.depthBiasEnable = VK_FALSE;
 
 	VkPipelineMultisampleStateCreateInfo multisamplingInfo{};
@@ -162,6 +163,9 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutInfo.setLayoutCount = 1;
+	VkDescriptorSetLayout descriptorSetLayout = m_descriptors.getDescriptorSetLayout();
+	pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
 
 	if (vkCreatePipelineLayout(m_context.getDevice(), &pipelineLayoutInfo, nullptr, &m_layout) != VK_SUCCESS)
 	{

@@ -9,11 +9,12 @@
 
 class VulkanContext;
 class Swapchain;
+class DescriptorManager;
 
 class Pipeline
 {
 public:
-	Pipeline(VulkanContext& context, Swapchain& swapchain, const std::string& vertPath, const std::string& fragPath);
+	Pipeline(VulkanContext& context, Swapchain& swapchain, DescriptorManager& descriptors, const std::string& vertPath, const std::string& fragPath);
 	~Pipeline();
 
 	Pipeline(const Pipeline&) = delete;
@@ -34,6 +35,7 @@ private:
 
 	VulkanContext& m_context;
 	Swapchain& m_swapchain;
+	DescriptorManager& m_descriptors;
 
 	VkPipelineLayout m_layout = VK_NULL_HANDLE;
 	VkPipeline m_pipeline = VK_NULL_HANDLE;

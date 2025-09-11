@@ -18,6 +18,7 @@ public:
 
 	VkBuffer getVertexBuffer() const { return m_vertexBuffer; }
 	VkBuffer getIndexBuffer() const { return m_indexBuffer; }
+	std::vector<VkBuffer> getUniformBuffers() const { return m_uniformBuffers; }
 	VkBuffer getUniformBuffer(size_t frameIndex) const { return m_uniformBuffers[frameIndex]; }
 	void* getUniformBufferMapped(size_t frameIndex) const { return m_uniformBuffersMapped[frameIndex]; }
 
