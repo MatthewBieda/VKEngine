@@ -21,10 +21,10 @@
 #include "Vertex.hpp" // Vertex definiton
 
 const std::vector<Vertex> vertices = {
-	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-	{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-	{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-	{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+	{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+	{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f }},
+	{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
 };
 
 const std::vector<uint16_t> indices = {
@@ -62,8 +62,8 @@ int main()
 	Swapchain swapchain(context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
 	GPUBuffer buffer(context, commands, vertices, indices, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
-	GPUImage image(context);
-	DescriptorManager descriptors(context, buffer, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
+	GPUImage image(context, commands, "../Textures/ice.jpg");
+	DescriptorManager descriptors(context, buffer, image, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));\
 	Pipeline pipeline(context, swapchain, descriptors, "../Shaders/vert.spv", "../Shaders/frag.spv");
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
 

@@ -217,6 +217,7 @@ void VulkanContext::createLogicalDevice()
 	queueCreateInfo.pQueuePriorities = &priority;
 
 	VkPhysicalDeviceFeatures features{};
+	features.samplerAnisotropy = VK_TRUE;
 
 	// Enable dynamic rendering
 	VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures{};
