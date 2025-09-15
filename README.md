@@ -24,3 +24,13 @@ It picks up where OGLRenderer left off.
     - Transparency
     - Frustum Culling / Occlusion Culling
     - Probe based Global Illumination
+
+## Devlog 0
+- Motivations & Dependencies
+
+[![VKEngine - Devlog 0](https://img.youtube.com/vi/qB6mkcmTGvY/0.jpg)](https://www.youtube.com/watch?v=qB6mkcmTGvY)
+
+## Devlog 1
+- Buffers & Textures
+
+[![VKEngine - Devlog 0](https://img.youtube.com/vi/XylJVviVezg/0.jpg)](https://www.youtube.com/watch?v=XylJVviVezg)
