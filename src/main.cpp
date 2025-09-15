@@ -70,9 +70,9 @@ int main()
 	Swapchain swapchain(context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
 	GPUBuffer buffer(context, commands, vertices, indices, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
-	GPUImage image(context, commands, "../Textures/ice.jpg");
+	GPUImage image(context, commands, "../Textures/ice.jpg", swapchain.getExtent());
 	DescriptorManager descriptors(context, buffer, image, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));\
-	Pipeline pipeline(context, swapchain, descriptors, "../Shaders/vert.spv", "../Shaders/frag.spv");
+	Pipeline pipeline(context, swapchain, descriptors, "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat());
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
 
 	while (!glfwWindowShouldClose(window))
@@ -130,13 +130,29 @@ int main()
 		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		colorAttachment.clearValue = { {0.0f, 0.0f, 0.0f, 1.0f} };
 
+		VkRenderingAttachmentInfo depthAttachment{};
+		depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+		depthAttachment.imageView = image.getDepthImageView(); 
+		depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+		depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+		VkClearValue depthClear{};
+		depthClear.depthStencil = { 1.0f, 0 }; // Clear depth to 1.0 (far plane)
+		depthAttachment.clearValue = depthClear;
+
 		VkRenderingInfo renderingInfo{};
 		renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
 		renderingInfo.renderArea.offset = { 0, 0 };
 		renderingInfo.renderArea.extent = swapchain.getExtent();
 		renderingInfo.layerCount = 1;  // <- required
+		
+		// Color attachments
 		renderingInfo.colorAttachmentCount = 1;
 		renderingInfo.pColorAttachments = &colorAttachment;
+
+		// Depth Attachment
+		renderingInfo.pDepthAttachment = &depthAttachment;
 
 		// Start dynamic rendering
 		vkCmdBeginRendering(cmd, &renderingInfo);

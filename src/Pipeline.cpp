@@ -8,10 +8,10 @@
 #include <iostream>
 #include <array>
 
-Pipeline::Pipeline(VulkanContext& context, Swapchain& swapchain, DescriptorManager& descriptors, const std::string& vertPath, const std::string& fragPath)
+Pipeline::Pipeline(VulkanContext& context, Swapchain& swapchain, DescriptorManager& descriptors, const std::string& vertPath, const std::string& fragPath, VkFormat depthFormat)
 	: m_context(context), m_swapchain(swapchain), m_descriptors(descriptors)
 {
-	createPipeline(vertPath, fragPath, m_swapchain.getFormat());
+	createPipeline(vertPath, fragPath, m_swapchain.getFormat(), depthFormat);
 }
 
 Pipeline::~Pipeline()
@@ -62,7 +62,7 @@ std::vector<char> Pipeline::readFile(const std::string& filename)
 	return buffer;
 }
 
-void Pipeline::createPipeline(const std::string& vertPath, const std::string& fragPath, VkFormat colorFormat)
+void Pipeline::createPipeline(const std::string& vertPath, const std::string& fragPath, VkFormat colorFormat, VkFormat depthFormat)
 {
 	std::vector<char> vertCode = readFile(vertPath);
 	std::vector<char> fragCode = readFile(fragPath);
@@ -174,11 +174,31 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 	std::cout << "Pipeline layout created successfully" << std::endl;
 
 	// Create graphics pipeline with dynamic rendering support
+
+	// Set stencil format based on whether the depth format includes stencil
+	VkFormat stencilFormat = (depthFormat == VK_FORMAT_D32_SFLOAT_S8_UINT ||
+							  depthFormat == VK_FORMAT_D24_UNORM_S8_UINT) ?
+							  depthFormat : VK_FORMAT_UNDEFINED;
+
 	VkPipelineRenderingCreateInfo renderingInfo{};
 	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
 	renderingInfo.colorAttachmentCount = 1;
 	VkFormat colorAttachmentFormat = colorFormat;
 	renderingInfo.pColorAttachmentFormats = &colorAttachmentFormat;
+	renderingInfo.depthAttachmentFormat = depthFormat;
+	renderingInfo.stencilAttachmentFormat = stencilFormat;
+
+	VkPipelineDepthStencilStateCreateInfo depthStencil{};
+	depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencil.depthTestEnable = VK_TRUE;
+	depthStencil.depthWriteEnable = VK_TRUE;
+	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+	depthStencil.depthBoundsTestEnable = VK_FALSE;
+	depthStencil.stencilTestEnable = stencilFormat == depthFormat ? VK_TRUE : VK_FALSE;
+	depthStencil.front = {};
+	depthStencil.back = {};
+	depthStencil.minDepthBounds = 0.0f;
+	depthStencil.maxDepthBounds = 1.0f;
 
 	VkGraphicsPipelineCreateInfo graphicsPipelineInfo{};
 	graphicsPipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -192,6 +212,7 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 	graphicsPipelineInfo.pMultisampleState = &multisamplingInfo;
 	graphicsPipelineInfo.pColorBlendState = &colorBlendInfo;
 	graphicsPipelineInfo.pDynamicState = &dynamicStateInfo;
+	graphicsPipelineInfo.pDepthStencilState = &depthStencil;
 	graphicsPipelineInfo.layout = m_layout;
 	graphicsPipelineInfo.renderPass = VK_NULL_HANDLE;
 	graphicsPipelineInfo.subpass = 0;

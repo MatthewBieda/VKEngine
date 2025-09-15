@@ -14,7 +14,7 @@ class DescriptorManager;
 class Pipeline
 {
 public:
-	Pipeline(VulkanContext& context, Swapchain& swapchain, DescriptorManager& descriptors, const std::string& vertPath, const std::string& fragPath);
+	Pipeline(VulkanContext& context, Swapchain& swapchain, DescriptorManager& descriptors, const std::string& vertPath, const std::string& fragPath, VkFormat depthFormat);
 	~Pipeline();
 
 	Pipeline(const Pipeline&) = delete;
@@ -31,12 +31,11 @@ public:
 private:
 	VkShaderModule createShaderModule(const std::vector<char>& code);
 	std::vector<char> readFile(const std::string& filename);
-	void createPipeline(const std::string& vertPath, const std::string& fragPath, VkFormat colorFormat);
+	void createPipeline(const std::string& vertPath, const std::string& fragPath, VkFormat colorFormat, VkFormat depthFormat);
 
 	VulkanContext& m_context;
 	Swapchain& m_swapchain;
 	DescriptorManager& m_descriptors;
-
 	VkPipelineLayout m_layout = VK_NULL_HANDLE;
 	VkPipeline m_pipeline = VK_NULL_HANDLE;
 
