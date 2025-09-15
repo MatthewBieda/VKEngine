@@ -6,18 +6,20 @@
 #include "glfw3.h"
 
 #define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+
 #include "glm.hpp"
 #include "gtc/matrix_transform.hpp"
 #include "chrono"
 
 #include "VulkanContext.hpp" // Instance, device, surface, debug messenger
 #include "Swapchain.hpp" // Swapchain, image views
-#include "Pipeline.hpp" // Shaders, pipeline layout, pipeline
 #include "Commands.hpp" // Command pool & Command buffers
-#include "DescriptorManager.hpp"   // Bindless textures, push descriptors
-#include "Sync.hpp" // Semaphores & Fences
 #include "GPUBuffer.hpp" // Vertex, index, uniform, storage buffers
 #include "GPUImage.hpp"  // Image + ImageView + Sampler
+#include "DescriptorManager.hpp"   // Bindless textures, push descriptors
+#include "Pipeline.hpp" // Shaders, pipeline layout, pipeline
+#include "Sync.hpp" // Semaphores & Fences
 #include "Vertex.hpp" // Vertex definiton
 
 const std::vector<Vertex> vertices = {
