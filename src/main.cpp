@@ -2,15 +2,18 @@
 #include <fstream>
 #include <vector>
 #include <array>
+#include <unordered_map>
 
 #include "glfw3.h"
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define TINYOBJLOADER_IMPLEMENTATION
 
 #include "glm.hpp"
 #include "gtc/matrix_transform.hpp"
 #include "chrono"
+#include <tiny_obj_loader.h>
 
 #include "VulkanContext.hpp" // Instance, device, surface, debug messenger
 #include "Swapchain.hpp" // Swapchain, image views
@@ -22,29 +25,6 @@
 #include "Sync.hpp" // Semaphores & Fences
 #include "Vertex.hpp" // Vertex definiton
 
-const std::vector<Vertex> vertices = {
-	{{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-	{{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-	{{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f }},
-	{{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}},
-
-	{{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-	{{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-	{{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f }},
-	{{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}},
-
-	{{ -0.5f, -0.5f, -1.0f }, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-	{{0.5f, -0.5f, -1.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-	{{0.5f, 0.5f, -1.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f }},
-	{{-0.5f, 0.5f, -1.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
-};
-
-const std::vector<uint16_t> indices = {
-	0, 1, 2, 2, 3, 0,
-	4, 5, 6, 6, 7, 4,
-	8, 9, 10, 10, 11, 8
-};
-
 // MVP Matrix
 struct UniformBufferObject {
 	glm::mat4 model;
@@ -55,7 +35,14 @@ struct UniformBufferObject {
 uint32_t windowWidth = 1920;
 uint32_t windowHeight = 1080;
 
+const std::string MODEL_PATH = "../Models/viking_room.obj";
+const std::string TEXTURE_PATH = "../Textures/viking_room.png";
+
+std::vector<Vertex> vertices{};
+std::vector<uint32_t> indices{};
+
 void updateUniformBuffer(uint32_t currentFrame, GPUBuffer& buffer);
+void loadModel();
 
 // Only init + run loop
 int main()
@@ -72,14 +59,19 @@ int main()
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 	GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "VKEngine", nullptr, nullptr);
 
+	loadModel();
+
 	VulkanContext context(window);
 	Swapchain swapchain(context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
 	GPUBuffer buffer(context, commands, vertices, indices, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
-	GPUImage image(context, commands, "../Textures/ice.jpg", swapchain.getExtent());
-	DescriptorManager descriptors(context, buffer, image, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));\
+	GPUImage image(context, commands, TEXTURE_PATH, swapchain.getExtent());
+	DescriptorManager descriptors(context, buffer, image, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
 	Pipeline pipeline(context, swapchain, descriptors, "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat());
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
+
+	std::cout << "Loaded " << vertices.size() << " vertices and " << indices.size() << " indices.\n";
+
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -183,7 +175,7 @@ int main()
 		VkBuffer vertexBuffers[] = { buffer.getVertexBuffer() };
 		VkDeviceSize offsets[] = { 0 };
 		vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
-		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
 		VkDescriptorSet currDescriptorSet = descriptors.getDescriptorSet(currentFrame);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getLayout(), 0, 1, &currDescriptorSet, 0, nullptr);
@@ -291,4 +283,49 @@ void updateUniformBuffer(uint32_t currentFrame, GPUBuffer& buffer)
 	UBO.proj[1][1] *= -1;
 
 	buffer.updateUniformBuffer(currentFrame, &UBO, sizeof(UBO));
+}
+
+void loadModel()
+{
+	tinyobj::attrib_t attrib;
+	std::vector<tinyobj::shape_t> shapes;
+	std::vector<tinyobj::material_t> materials;
+	std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+	std::string warn;
+	std::string err;
+
+	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())) 
+	{
+		throw std::runtime_error(err);
+	}
+
+	for (const auto& shape : shapes)
+	{
+		for (const tinyobj::index_t& index : shape.mesh.indices)
+		{
+			Vertex vertex{};
+
+			vertex.pos =
+			{
+				attrib.vertices[3 * index.vertex_index + 0],
+				attrib.vertices[3 * index.vertex_index + 1],
+				attrib.vertices[3 * index.vertex_index + 2]
+			};
+
+			vertex.texCoord = {
+				attrib.texcoords[2 * index.texcoord_index + 0],
+				1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+			};
+
+			vertex.color = { 1.0f, 1.0f, 1.0f };
+
+			if (uniqueVertices.count(vertex) == 0)
+			{
+				uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
+				vertices.push_back(vertex);
+			}
+
+			indices.push_back(uniqueVertices[vertex]);
+		}
+	}
 }

@@ -4,7 +4,7 @@
 #include "Commands.hpp"
 #include <stdexcept>
 
-GPUBuffer::GPUBuffer(VulkanContext& context, Commands& commands, const std::vector<Vertex>& vertices, const std::vector<uint16_t> indices, uint32_t maxFramesInFlight, VkDeviceSize uniformBufferSize)
+GPUBuffer::GPUBuffer(VulkanContext& context, Commands& commands, const std::vector<Vertex>& vertices, const std::vector<uint32_t> indices, uint32_t maxFramesInFlight, VkDeviceSize uniformBufferSize)
 	: m_context(context), m_commands(commands), m_maxFramesInFlight(maxFramesInFlight), 
 	  m_uniformBuffers(maxFramesInFlight), m_uniformAllocations(maxFramesInFlight), m_uniformBuffersMapped(maxFramesInFlight)
 {
@@ -79,7 +79,7 @@ void GPUBuffer::createVertexBuffer(const std::vector<Vertex>& vertices)
 	vmaDestroyBuffer(m_context.getAllocator(), stagingBuffer, stagingAllocation);
 }
 
-void GPUBuffer::createIndexBuffer(const std::vector<uint16_t>& indices)
+void GPUBuffer::createIndexBuffer(const std::vector<uint32_t>& indices)
 {
 	VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
 

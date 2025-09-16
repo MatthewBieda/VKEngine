@@ -13,7 +13,7 @@ class Commands;
 class GPUBuffer
 {
 public:
-	GPUBuffer(VulkanContext& context, Commands& commands, const std::vector<Vertex>& vertices, const std::vector<uint16_t> indices, uint32_t maxFramesInFlight, VkDeviceSize uniformBufferSize);
+	GPUBuffer(VulkanContext& context, Commands& commands, const std::vector<Vertex>& vertices, const std::vector<uint32_t> indices, uint32_t maxFramesInFlight, VkDeviceSize uniformBufferSize);
 	~GPUBuffer();
 
 	VkBuffer getVertexBuffer() const { return m_vertexBuffer; }
@@ -43,7 +43,7 @@ private:
 	uint32_t m_maxFramesInFlight{};
 
 	void createVertexBuffer(const std::vector<Vertex>& vertices);
-	void createIndexBuffer(const std::vector<uint16_t>& indices);
+	void createIndexBuffer(const std::vector<uint32_t>& indices);
 	void createUniformBuffers(VkDeviceSize bufferSize);
 	void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 };
