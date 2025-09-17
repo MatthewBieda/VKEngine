@@ -4,6 +4,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+#include <cmath>
 #include <stdexcept>
 
 GPUImage::GPUImage(VulkanContext& context, Commands& commands, const std::string& path, VkExtent2D extent)
@@ -37,6 +38,9 @@ void GPUImage::createTextureImage(const std::string& path)
 	{
 		throw std::runtime_error("Failed to load texture image!");
 	}
+
+	// Calculate mip levels
+	m_mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
 
 	VkDeviceSize imageSize = texWidth * texHeight * 4;
 
@@ -75,12 +79,12 @@ void GPUImage::createTextureImage(const std::string& path)
 	imageInfo.extent.width = static_cast<uint32_t>(texWidth);
 	imageInfo.extent.height = static_cast<uint32_t>(texHeight);
 	imageInfo.extent.depth = 1;
-	imageInfo.mipLevels = 1;
+	imageInfo.mipLevels = m_mipLevels;
 	imageInfo.arrayLayers = 1;
 	imageInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
 	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 	imageInfo.flags = 0;
@@ -108,10 +112,14 @@ void GPUImage::createTextureImage(const std::string& path)
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(cmd, &beginInfo);
 
-	// Transition, copy, transition
-	transitionImageLayout(cmd, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, m_textureImage, VK_IMAGE_ASPECT_COLOR_BIT);
+	// Transition base mip level for transfer
+	transitionImageLayout(cmd, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, m_textureImage, VK_IMAGE_ASPECT_COLOR_BIT, 0, 1);
+
+	// Copy buffer to base mip level (mip 0)
 	copyBufferToImage(cmd, stagingBuffer, texWidth, texHeight);
-	transitionImageLayout(cmd, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_textureImage, VK_IMAGE_ASPECT_COLOR_BIT);
+
+	// Generate mipmaps
+	generateMipmaps(cmd, texWidth, texHeight);
 
 	vkEndCommandBuffer(cmd);
 
@@ -196,10 +204,70 @@ void GPUImage::createDepthImage(uint32_t width, uint32_t height)
 	vkFreeCommandBuffers(m_context.getDevice(), m_commands.getCommandPool(), 1, &cmd);
 
 	createImageView(m_depthImage, m_depthFormat, aspect, m_depthImageView);
-
 }
 
-void GPUImage::transitionImageLayout(VkCommandBuffer cmd, VkImageLayout oldLayout, VkImageLayout newLayout, VkImage image, VkImageAspectFlags aspectMask)
+void GPUImage::generateMipmaps(VkCommandBuffer cmd, uint32_t width, uint32_t height)
+{
+	// Check if linear blitting is supported for our format
+	VkFormatProperties formatProps;
+	vkGetPhysicalDeviceFormatProperties(m_context.getPhysicalDevice(), VK_FORMAT_R8G8B8A8_SRGB, &formatProps);
+
+	if (!(formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+	{
+		throw std::runtime_error("Linear blitting not supported for texture format!");
+	}
+
+	int32_t mipWidth = width;
+	int32_t mipHeight = height;
+
+	for (uint32_t i = 1; i < m_mipLevels; ++i)
+	{
+		// Transition previous mip level to TRANSFER_SRC_OPTIMAL for reading
+		transitionImageLayout(cmd, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, m_textureImage, VK_IMAGE_ASPECT_COLOR_BIT, i - 1, 1);
+
+		// Transition next mip level to TRANSFER_DST_OPTIMAL for blitting
+		transitionImageLayout(cmd, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			m_textureImage, VK_IMAGE_ASPECT_COLOR_BIT, i, 1);
+
+		// Set up blit operation
+		VkImageBlit blit{};
+		blit.srcOffsets[0] = { 0,0,0 };
+		blit.srcOffsets[1] = { mipWidth, mipHeight, 1 };
+		blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		blit.srcSubresource.mipLevel = i - 1;
+		blit.srcSubresource.baseArrayLayer = 0;
+		blit.srcSubresource.layerCount = 1;
+
+		// Calculate next mip level dimensions
+		int32_t nextMipWidth = mipWidth > 1 ? mipWidth / 2 : 1;
+		int32_t nextMipHeight = mipHeight > 1 ? mipHeight / 2 : 1;
+
+		blit.dstOffsets[0] = { 0,0,0 };
+		blit.dstOffsets[1] = { nextMipWidth, nextMipHeight, 1 };
+		blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		blit.dstSubresource.mipLevel = i;
+		blit.dstSubresource.baseArrayLayer = 0;
+		blit.dstSubresource.layerCount = 1;
+
+		// Perform the blit (current mip level i is still in TRANSFER_DST_OPTIMAL)
+		vkCmdBlitImage(cmd, m_textureImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+							m_textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+							1, &blit, VK_FILTER_LINEAR);
+
+		// Transition the previous mip level to SHADER_READ_ONLY_OPTIMAL
+		transitionImageLayout(cmd, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			m_textureImage, VK_IMAGE_ASPECT_COLOR_BIT, i - 1, 1);
+
+		mipWidth = nextMipWidth;
+		mipHeight = nextMipHeight;
+	}
+
+	// Transition the last mip level to SHADER_READ_ONLY_OPTIMAL
+	transitionImageLayout(cmd, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		m_textureImage, VK_IMAGE_ASPECT_COLOR_BIT, m_mipLevels - 1, 1);
+}
+
+void GPUImage::transitionImageLayout(VkCommandBuffer cmd, VkImageLayout oldLayout, VkImageLayout newLayout, VkImage image, VkImageAspectFlags aspectMask, uint32_t baseMipLevel, uint32_t mipLevelCount)
 {
 	VkImageMemoryBarrier2 barrier{};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -209,8 +277,8 @@ void GPUImage::transitionImageLayout(VkCommandBuffer cmd, VkImageLayout oldLayou
 	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	barrier.image = image;
 	barrier.subresourceRange.aspectMask = aspectMask;
-	barrier.subresourceRange.baseMipLevel = 0;
-	barrier.subresourceRange.levelCount = 1;
+	barrier.subresourceRange.baseMipLevel = baseMipLevel;
+	barrier.subresourceRange.levelCount = mipLevelCount;
 	barrier.subresourceRange.baseArrayLayer = 0;
 	barrier.subresourceRange.layerCount = 1;
 
@@ -229,6 +297,20 @@ void GPUImage::transitionImageLayout(VkCommandBuffer cmd, VkImageLayout oldLayou
 		srcStage = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
 		dstStage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
 		srcAccess = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+		dstAccess = VK_ACCESS_2_SHADER_READ_BIT;
+	}
+	else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+	{
+		srcStage = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+		dstStage = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+		srcAccess = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+		dstAccess = VK_ACCESS_2_TRANSFER_READ_BIT;
+	}
+	else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+	{
+		srcStage = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+		dstStage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+		srcAccess = VK_ACCESS_2_TRANSFER_READ_BIT;
 		dstAccess = VK_ACCESS_2_SHADER_READ_BIT;
 	}
 	else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
@@ -263,7 +345,7 @@ void GPUImage::copyBufferToImage(VkCommandBuffer cmd, VkBuffer buffer, uint32_t 
 	region.bufferRowLength = 0;
 	region.bufferImageHeight = 0;
 	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	region.imageSubresource.mipLevel = 0;
+	region.imageSubresource.mipLevel = 0; // Only copying to base mip level
 	region.imageSubresource.baseArrayLayer = 0;
 	region.imageSubresource.layerCount = 1;
 	region.imageOffset = { 0, 0, 0 };
@@ -281,7 +363,18 @@ void GPUImage::createImageView(VkImage image, VkFormat format, VkImageAspectFlag
 	viewInfo.format = format;
 	viewInfo.subresourceRange.aspectMask = aspect;
 	viewInfo.subresourceRange.baseMipLevel = 0;
-	viewInfo.subresourceRange.levelCount = 1;
+
+	// For texture images, include all mip levels in the view
+	if (image == m_textureImage)
+	{
+		viewInfo.subresourceRange.levelCount = m_mipLevels;
+	}
+	else 
+	{
+		viewInfo.subresourceRange.levelCount = 1; // Depth won't use mipmaps
+
+	}
+
 	viewInfo.subresourceRange.baseArrayLayer = 0;
 	viewInfo.subresourceRange.layerCount = 1;
 
@@ -305,9 +398,12 @@ void GPUImage::createSampler()
 	samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
 	samplerInfo.unnormalizedCoordinates = VK_FALSE;
 	samplerInfo.compareEnable = VK_FALSE;
+
+	// Enable mipmaps
+	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	samplerInfo.mipLodBias = 0.0f;
 	samplerInfo.minLod = 0.0f;
-	samplerInfo.maxLod = 0.0f;
+	samplerInfo.maxLod = VK_LOD_CLAMP_NONE;
 
 	if (vkCreateSampler(m_context.getDevice(), &samplerInfo, nullptr, &m_textureSampler) != VK_SUCCESS)
 	{
