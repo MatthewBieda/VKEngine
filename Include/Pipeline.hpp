@@ -40,5 +40,5 @@ private:
 	VkPipeline m_pipeline = VK_NULL_HANDLE;
 
 	static constexpr float DEFAULT_LINE_WIDTH = 1.0f;
-	static constexpr VkSampleCountFlagBits DEFAULT_SAMPLES = VK_SAMPLE_COUNT_1_BIT;
+	static constexpr VkSampleCountFlagBits DEFAULT_SAMPLES = VK_SAMPLE_COUNT_4_BIT;
 };

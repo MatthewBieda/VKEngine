@@ -65,7 +65,10 @@ int main()
 	Swapchain swapchain(context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
 	GPUBuffer buffer(context, commands, vertices, indices, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
+
 	GPUImage image(context, commands, TEXTURE_PATH, swapchain.getExtent());
+	image.createMSAAColorImage(swapchain.getExtent().width, swapchain.getExtent().height, swapchain.getFormat());
+
 	DescriptorManager descriptors(context, buffer, image, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
 	Pipeline pipeline(context, swapchain, descriptors, "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat());
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
@@ -120,21 +123,25 @@ int main()
 
 		vkCmdPipelineBarrier2(cmd, &preDepInfo);
 
+		// Color Attachment - Render to MSAA target, resolve to Swapchain
 		VkRenderingAttachmentInfo colorAttachment{};
 		colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		colorAttachment.imageView = swapchain.getSwapchainImageView(imageIndex);
-		colorAttachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR;
+		colorAttachment.imageView = image.getMSAAColorImageView(); // Render to MSAA target
+		colorAttachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+		colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT; // Enable resolve
+		colorAttachment.resolveImageView = swapchain.getSwapchainImageView(imageIndex); // Resolve to swapchain
+		colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // For presentation
 		colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		colorAttachment.clearValue = { {0.0f, 0.0f, 0.0f, 1.0f} };
 
+		// Depth Attachment - MSAA depth buffer
 		VkRenderingAttachmentInfo depthAttachment{};
 		depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 		depthAttachment.imageView = image.getDepthImageView(); 
 		depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 		depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-
 		VkClearValue depthClear{};
 		depthClear.depthStencil = { 1.0f, 0 }; // Clear depth to 1.0 (far plane)
 		depthAttachment.clearValue = depthClear;
@@ -144,12 +151,8 @@ int main()
 		renderingInfo.renderArea.offset = { 0, 0 };
 		renderingInfo.renderArea.extent = swapchain.getExtent();
 		renderingInfo.layerCount = 1;  // <- required
-		
-		// Color attachments
 		renderingInfo.colorAttachmentCount = 1;
 		renderingInfo.pColorAttachments = &colorAttachment;
-
-		// Depth Attachment
 		renderingInfo.pDepthAttachment = &depthAttachment;
 
 		// Start dynamic rendering
@@ -192,7 +195,7 @@ int main()
 		postRenderBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
 		postRenderBarrier.dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
 		postRenderBarrier.dstAccessMask = 0;
-		postRenderBarrier.oldLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR;
+		postRenderBarrier.oldLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 		postRenderBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 		postRenderBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		postRenderBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;

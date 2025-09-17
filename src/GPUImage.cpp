@@ -21,6 +21,9 @@ GPUImage::GPUImage(VulkanContext& context, Commands& commands, VkExtent2D extent
 
 GPUImage::~GPUImage()
 {
+	vkDestroyImageView(m_context.getDevice(), m_msaaColorImageView, nullptr);
+	vmaDestroyImage(m_context.getAllocator(), m_msaaColorImage, m_msaaColorImageAllocation);
+
 	vkDestroySampler(m_context.getDevice(), m_textureSampler, nullptr);
 	vkDestroyImageView(m_context.getDevice(), m_textureImageView, nullptr);
 	vmaDestroyImage(m_context.getAllocator(), m_textureImage, m_textureImageAllocation);
@@ -156,7 +159,7 @@ void GPUImage::createDepthImage(uint32_t width, uint32_t height)
 	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageInfo.samples = m_msaaSamples;
 	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 	VmaAllocationCreateInfo allocInfo{};
@@ -189,7 +192,7 @@ void GPUImage::createDepthImage(uint32_t width, uint32_t height)
 		aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
 	}
 
-	transitionImageLayout(cmd, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, m_depthImage, aspect);
+	transitionImageLayout(cmd, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, m_depthImage, aspect, 0, 1);
 
 	vkEndCommandBuffer(cmd);
 
@@ -204,6 +207,34 @@ void GPUImage::createDepthImage(uint32_t width, uint32_t height)
 	vkFreeCommandBuffers(m_context.getDevice(), m_commands.getCommandPool(), 1, &cmd);
 
 	createImageView(m_depthImage, m_depthFormat, aspect, m_depthImageView);
+}
+
+void GPUImage::createMSAAColorImage(uint32_t width, uint32_t height, VkFormat colorFormat)
+{
+	VkImageCreateInfo imageInfo{};
+	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageInfo.imageType = VK_IMAGE_TYPE_2D;
+	imageInfo.extent.width = width;
+	imageInfo.extent.height = height;
+	imageInfo.extent.depth = 1;
+	imageInfo.mipLevels = 1;
+	imageInfo.arrayLayers = 1;
+	imageInfo.format = VK_FORMAT_B8G8R8A8_SRGB;
+	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+	imageInfo.samples = m_msaaSamples;
+	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	VmaAllocationCreateInfo allocInfo{};
+	allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+	if (vmaCreateImage(m_context.getAllocator(), &imageInfo, &allocInfo, &m_msaaColorImage, &m_msaaColorImageAllocation, nullptr) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create MSAA color image");
+	}
+
+	createImageView(m_msaaColorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT, m_msaaColorImageView);
 }
 
 void GPUImage::generateMipmaps(VkCommandBuffer cmd, uint32_t width, uint32_t height)
@@ -371,7 +402,7 @@ void GPUImage::createImageView(VkImage image, VkFormat format, VkImageAspectFlag
 	}
 	else 
 	{
-		viewInfo.subresourceRange.levelCount = 1; // Depth won't use mipmaps
+		viewInfo.subresourceRange.levelCount = 1; // Depth and MSAA won't use mipmaps
 
 	}
 
