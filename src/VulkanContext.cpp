@@ -218,6 +218,7 @@ void VulkanContext::createLogicalDevice()
 
 	VkPhysicalDeviceFeatures features{};
 	features.samplerAnisotropy = VK_TRUE;
+	features.sampleRateShading = VK_TRUE;
 
 	// Enable dynamic rendering
 	VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures{};

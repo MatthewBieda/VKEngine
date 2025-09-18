@@ -140,7 +140,8 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 
 	VkPipelineMultisampleStateCreateInfo multisamplingInfo{};
 	multisamplingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-	multisamplingInfo.sampleShadingEnable = VK_FALSE;
+	multisamplingInfo.sampleShadingEnable = VK_TRUE;
+	multisamplingInfo.minSampleShading = 0.2f;
 	multisamplingInfo.rasterizationSamples = DEFAULT_SAMPLES;
 
 	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
