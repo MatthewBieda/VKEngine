@@ -33,4 +33,9 @@ It picks up where OGLRenderer left off.
 ## Devlog 1
 - Buffers & Textures
 
-[![VKEngine - Devlog 0](https://img.youtube.com/vi/XylJVviVezg/0.jpg)](https://www.youtube.com/watch?v=XylJVviVezg)
+[![VKEngine - Devlog 1](https://img.youtube.com/vi/XylJVviVezg/0.jpg)](https://www.youtube.com/watch?v=XylJVviVezg)
+
+## Devlog 2
+- Loading a 3D Model and implementing Depth Testing/Multisampling/MSAA
+
+[![VKEngine - Devlog 2](https://img.youtube.com/vi/BNghrnk86vo/0.jpg)](https://www.youtube.com/watch?v=BNghrnk86vo)

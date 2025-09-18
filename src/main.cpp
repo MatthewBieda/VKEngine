@@ -19,8 +19,8 @@
 #include "Swapchain.hpp" // Swapchain, image views
 #include "Commands.hpp" // Command pool & Command buffers
 #include "GPUBuffer.hpp" // Vertex, index, uniform, storage buffers
-#include "GPUImage.hpp"  // Image + ImageView + Sampler
-#include "DescriptorManager.hpp"   // Bindless textures, push descriptors
+#include "GPUImage.hpp" // Image + ImageView + Sampler
+#include "DescriptorManager.hpp" // Bindless textures, push descriptors
 #include "Pipeline.hpp" // Shaders, pipeline layout, pipeline
 #include "Sync.hpp" // Semaphores & Fences
 #include "Vertex.hpp" // Vertex definiton
