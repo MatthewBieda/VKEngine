@@ -170,7 +170,6 @@ void GPUImage::createDepthImage(uint32_t width, uint32_t height)
 		throw std::runtime_error("Failed to create depth image");
 	}
 
-	// Record all commands in one command buffer
 	VkCommandBufferAllocateInfo allocInfoCmd{};
 	allocInfoCmd.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	allocInfoCmd.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -233,6 +232,34 @@ void GPUImage::createMSAAColorImage(uint32_t width, uint32_t height, VkFormat co
 	{
 		throw std::runtime_error("Failed to create MSAA color image");
 	}
+
+	VkCommandBufferAllocateInfo allocInfoCmd{};
+	allocInfoCmd.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfoCmd.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfoCmd.commandPool = m_commands.getCommandPool();
+	allocInfoCmd.commandBufferCount = 1;
+
+	VkCommandBuffer cmd;
+	vkAllocateCommandBuffers(m_context.getDevice(), &allocInfoCmd, &cmd);
+
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	vkBeginCommandBuffer(cmd, &beginInfo);
+
+	transitionImageLayout(cmd, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, m_msaaColorImage, VK_IMAGE_ASPECT_COLOR_BIT, 0, 1);
+
+	vkEndCommandBuffer(cmd);
+
+	VkSubmitInfo submitInfo{};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &cmd;
+
+	vkQueueSubmit(m_context.getGraphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE);
+	vkQueueWaitIdle(m_context.getGraphicsQueue());
+
+	vkFreeCommandBuffers(m_context.getDevice(), m_commands.getCommandPool(), 1, &cmd);
 
 	createImageView(m_msaaColorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT, m_msaaColorImageView);
 }
@@ -350,6 +377,13 @@ void GPUImage::transitionImageLayout(VkCommandBuffer cmd, VkImageLayout oldLayou
 		dstStage = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
 		srcAccess = 0;
 		dstAccess = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	}
+	else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+	{
+		srcStage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+		dstStage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+		srcAccess = 0;
+		dstAccess = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
 	}
 	else
 	{
