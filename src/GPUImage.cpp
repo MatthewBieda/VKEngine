@@ -345,9 +345,9 @@ void GPUImage::transitionImageLayout(VkCommandBuffer cmd, VkImageLayout oldLayou
 
 	if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
 	{
-		srcStage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+		srcStage = VK_PIPELINE_STAGE_2_NONE;
 		dstStage = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-		srcAccess = 0;
+		srcAccess = VK_ACCESS_2_NONE;
 		dstAccess = VK_ACCESS_2_TRANSFER_WRITE_BIT;
 	}
 	else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
@@ -373,16 +373,16 @@ void GPUImage::transitionImageLayout(VkCommandBuffer cmd, VkImageLayout oldLayou
 	}
 	else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
 	{
-		srcStage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+		srcStage = VK_PIPELINE_STAGE_2_NONE;
 		dstStage = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
-		srcAccess = 0;
+		srcAccess = VK_ACCESS_2_NONE;
 		dstAccess = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 	}
 	else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
 	{
-		srcStage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+		srcStage = VK_PIPELINE_STAGE_2_NONE;
 		dstStage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-		srcAccess = 0;
+		srcAccess = VK_ACCESS_2_NONE;
 		dstAccess = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
 	}
 	else
