@@ -98,15 +98,15 @@ int main()
 
 		vkBeginCommandBuffer(cmd, &beginInfo);
 
-		// Transition swapchain image from UNDEFINED to COLOR_ATTACHMENT_OPTIMAL
+		// Transition swapchain image from UNDEFINED to ATTACHMENT_OPTIMAL
 		VkImageMemoryBarrier2 preRenderBarrier{};
 		preRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
 		preRenderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-		preRenderBarrier.srcAccessMask = 0;
+		preRenderBarrier.srcAccessMask = VK_ACCESS_2_NONE;
 		preRenderBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
 		preRenderBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
 		preRenderBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		preRenderBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		preRenderBarrier.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 		preRenderBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		preRenderBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		preRenderBarrier.image = swapchain.getSwapchainImage(imageIndex);
@@ -188,13 +188,13 @@ int main()
 		// End dynamic rendering
 		vkCmdEndRendering(cmd);
 
-		// Transition swapchain image from COLOR_ATTACHMENT_OPTIMAL to PRESENT_SRC_KHR
+		// Transition swapchain image from ATTACHMENT_OPTIMAL to PRESENT_SRC_KHR
 		VkImageMemoryBarrier2 postRenderBarrier{};
 		postRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
 		postRenderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
 		postRenderBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-		postRenderBarrier.dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
-		postRenderBarrier.dstAccessMask = 0;
+		postRenderBarrier.dstStageMask = VK_PIPELINE_STAGE_2_NONE;
+		postRenderBarrier.dstAccessMask = VK_ACCESS_2_NONE;
 		postRenderBarrier.oldLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 		postRenderBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 		postRenderBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
