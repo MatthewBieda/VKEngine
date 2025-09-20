@@ -19,10 +19,13 @@ inline VkDebugUtilsLabelEXT makeLabel(const char* name,
 
 inline void nameObject(VkDevice device, uint64_t handle, VkObjectType type, const char* name)
 {
-	VkDebugUtilsObjectNameInfoEXT info{};
-	info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
-	info.objectType = type;
-	info.objectHandle = handle;
-	info.pObjectName = name;
+
+	VkDebugUtilsObjectNameInfoEXT info{
+		.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+		.objectType = type,
+		.objectHandle = handle,
+		.pObjectName = name
+	};
+
 	vkSetDebugUtilsObjectNameEXT(device, &info);
 }
