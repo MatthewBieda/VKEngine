@@ -30,9 +30,6 @@
     <ClCompile Include="Sync.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Utils.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="GPUBuffer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

@@ -146,7 +146,6 @@
     <ClCompile Include="Pipeline.cpp" />
     <ClCompile Include="Swapchain.cpp" />
     <ClCompile Include="Sync.cpp" />
-    <ClCompile Include="Utils.cpp" />
     <ClCompile Include="VulkanContext.cpp" />
   </ItemGroup>
   <ItemGroup>

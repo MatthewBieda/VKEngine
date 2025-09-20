@@ -24,6 +24,7 @@
 #include "Pipeline.hpp" // Shaders, pipeline layout, pipeline
 #include "Sync.hpp" // Semaphores & Fences
 #include "Vertex.hpp" // Vertex definiton
+#include "Utils.hpp" // Helper functions
 
 // MVP Matrix
 struct UniformBufferObject {
@@ -75,6 +76,9 @@ int main()
 
 	std::cout << "Loaded " << vertices.size() << " vertices and " << indices.size() << " indices.\n";
 
+	// Create label
+	VkDebugUtilsLabelEXT cmdLabel = makeLabel("Command List: ", 0.2f, 0.2f, 0.8f);
+	nameObject(context.getDevice(), (uint64_t)buffer.getVertexBuffer(), VK_OBJECT_TYPE_BUFFER, "ModelVertexBuffer");
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -97,6 +101,7 @@ int main()
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
 		vkBeginCommandBuffer(cmd, &beginInfo);
+		vkCmdBeginDebugUtilsLabelEXT(cmd, &cmdLabel);
 
 		// Transition swapchain image from UNDEFINED to ATTACHMENT_OPTIMAL
 		VkImageMemoryBarrier2 preRenderBarrier{};
@@ -213,6 +218,7 @@ int main()
 
 		vkCmdPipelineBarrier2(commands.getCommandBuffer(currentFrame), &postDepInfo);
 
+		vkCmdEndDebugUtilsLabelEXT(cmd);
 		vkEndCommandBuffer(commands.getCommandBuffer(currentFrame));
 
 		updateUniformBuffer(currentFrame, buffer);
