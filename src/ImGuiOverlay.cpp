@@ -1,0 +1,196 @@
+#define IMGUI_IMPL_VULKAN_NO_PROTOTYPES
+
+#include "ImGuiOverlay.hpp"
+#include "VulkanContext.hpp"
+#include "DescriptorManager.hpp"
+
+#include <stdexcept>
+#include <iostream>
+
+#include "glm.hpp"
+
+ImGuiOverlay::~ImGuiOverlay()
+{
+	if (m_initialized)
+	{
+		ImGui_ImplVulkan_Shutdown();
+		ImGui_ImplGlfw_Shutdown();
+		ImGui::DestroyContext();
+	}
+}
+
+void ImGuiOverlay::init(GLFWwindow* window, VulkanContext& context, DescriptorManager& descriptors, VkFormat swapchainFormat, uint32_t imageCount, VkSampleCountFlagBits msaaSamples)
+{
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO();
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+	ImGui::StyleColorsDark();
+
+	// ImGui - GLFW initialization
+	ImGui_ImplGlfw_InitForVulkan(window, true);
+
+	// Load Vulkan functions for ImGui with optimal device/instance function loading
+	auto funcLoader = [](const char* funcName, void* userData) -> PFN_vkVoidFunction {
+		VulkanContext* ctx = reinterpret_cast<VulkanContext*>(userData);
+
+		// List of functions that are definitely instance-level only
+		static const char* instanceOnlyFunctions[] = {
+			"vkDestroySurfaceKHR",
+			"vkEnumeratePhysicalDevices",
+			"vkGetPhysicalDeviceProperties",
+			"vkGetPhysicalDeviceMemoryProperties",
+			"vkGetPhysicalDeviceQueueFamilyProperties",
+			"vkGetPhysicalDeviceSurfaceCapabilitiesKHR",
+			"vkGetPhysicalDeviceSurfaceFormatsKHR",
+			"vkGetPhysicalDeviceSurfacePresentModesKHR",
+			"vkGetPhysicalDeviceSurfaceSupportKHR",
+			"vkCreateInstance",
+			"vkDestroyInstance",
+			"vkEnumerateInstanceExtensionProperties",
+			"vkEnumerateInstanceLayerProperties"
+		};
+
+		// Check if this is an instance-only function
+		for (const char* instanceFunc : instanceOnlyFunctions) {
+			if (strcmp(funcName, instanceFunc) == 0) {
+				return vkGetInstanceProcAddr(ctx->getInstance(), funcName);
+			}
+		}
+
+		// For all other functions, try device first, then fall back to instance
+		PFN_vkVoidFunction deviceAddr = vkGetDeviceProcAddr(ctx->getDevice(), funcName);
+		if (deviceAddr) {
+			return deviceAddr;
+		}
+
+		return vkGetInstanceProcAddr(ctx->getInstance(), funcName);
+		};
+
+	bool funcsLoaded = ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_4, funcLoader, &context);
+	if (!funcsLoaded) {
+		throw std::runtime_error("Failed to load Vulkan functions for ImGui!");
+	}
+
+	// ImGui - Vulkan initialization
+	ImGui_ImplVulkan_InitInfo info{};
+	info.Instance = context.getInstance();
+	info.ApiVersion = VK_API_VERSION_1_4;
+	info.PhysicalDevice = context.getPhysicalDevice();
+	info.Device = context.getDevice();
+	info.QueueFamily = context.getGraphicsQueueFamilyIndex();
+	info.Queue = context.getGraphicsQueue();
+	info.PipelineCache = VK_NULL_HANDLE;
+	info.DescriptorPool = descriptors.getDescriptorPool();
+	info.RenderPass = VK_NULL_HANDLE;
+	info.Subpass = 0;
+	info.MinImageCount = imageCount;
+	info.ImageCount = imageCount;
+	info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+	info.Allocator = nullptr;
+	info.UseDynamicRendering = true;
+	info.CheckVkResultFn = checkVkResult;
+
+	// Setup pipeline rendering info for dynamic rendering
+	VkPipelineRenderingCreateInfo pipelineRenderingInfo{};
+	pipelineRenderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	pipelineRenderingInfo.colorAttachmentCount = 1;
+	pipelineRenderingInfo.pColorAttachmentFormats = &swapchainFormat;
+
+	info.PipelineRenderingCreateInfo = pipelineRenderingInfo;
+
+	bool initResult = ImGui_ImplVulkan_Init(&info);
+	if (!initResult)
+	{
+		throw std::runtime_error("Failed to initialize ImGui VUlkan implementation");
+	}
+
+	m_initialized = true;
+	std::cout << "ImGui initialized successfully with existing Vulkan resources!" << std::endl;
+}
+
+void ImGuiOverlay::newFrame()
+{
+	if (!m_initialized)
+	{
+		return;
+	}
+
+	ImGui_ImplVulkan_NewFrame();
+	ImGui_ImplGlfw_NewFrame();
+	ImGui::NewFrame();
+}
+
+void ImGuiOverlay::recordCommands(VkCommandBuffer commandBuffer)
+{
+	if (!m_initialized)
+	{
+		return;
+	}
+
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+}
+
+void ImGuiOverlay::render()
+{
+	if (!m_initialized)
+	{
+		return;
+	}
+
+	ImGui::Render();
+}
+
+void ImGuiOverlay::drawUI()
+{
+	if (!m_initialized) 
+	{
+		return;
+	}
+
+	static bool showMetrics = false;
+	static float rotationSpeed = 90.0f;
+	static glm::vec3 clearColor = { 0.0f, 0.0f, 0.0f };
+
+	// Main menu bar
+	if (ImGui::BeginMainMenuBar())
+	{
+		if (ImGui::BeginMenu("Windows"))
+		{
+			ImGui::MenuItem("Metrics Window", nullptr, &showMetrics);
+			ImGui::EndMenu();
+		}
+		ImGui::EndMainMenuBar();
+	}
+
+	// Control panel
+	ImGui::Begin("Vulkan Renderer Controls");
+	ImGui::Text("Application average %.3f ms/frame (%.1f FPS"),
+		1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate;
+
+	ImGui::Separator();
+
+	ImGui::SliderFloat("Rotation Speed", &rotationSpeed, 0.0f, 360.0f, "%.1f deg/s");
+	ImGui::ColorEdit3("Clear Color", &clearColor.x);
+
+	ImGui::End();
+	
+	if (showMetrics)
+	{
+		ImGui::ShowMetricsWindow(&showMetrics);
+	}
+}
+
+void ImGuiOverlay::checkVkResult(VkResult err)
+{
+	if (err == VK_SUCCESS) return;
+
+	std::cerr << "[Vulkan] Error: VkResult = " << err << std::endl;
+	if (err < 0) 
+	{
+		throw std::runtime_error("Fatal Vulkan error occurred in ImGui!");
+	}
+}

@@ -14,6 +14,9 @@ public:
 	VkCommandPool getCommandPool() const { return m_commandPool; }
 	VkCommandBuffer getCommandBuffer(uint32_t frameIndex) const { return m_commandBuffers[frameIndex]; }
 
+	VkCommandBuffer beginSingleTimeCommands();
+	void endSingleTimeCommands(VkCommandBuffer commandBuffer);
+
 private:
 	VulkanContext& m_context;
 	uint32_t m_maxFramesInFlight;

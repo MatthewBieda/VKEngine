@@ -19,12 +19,13 @@
 #include "Swapchain.hpp" // Swapchain, image views
 #include "Commands.hpp" // Command pool & Command buffers
 #include "GPUBuffer.hpp" // Vertex, index, uniform, storage buffers
-#include "GPUImage.hpp" // Image + ImageView + Sampler
-#include "DescriptorManager.hpp" // Bindless textures, push descriptors
+#include "GPUImage.hpp" // TextureImage, DepthImage, MSAAImage
+#include "DescriptorManager.hpp" // Classic API for now (Pools/Sets)
 #include "Pipeline.hpp" // Shaders, pipeline layout, pipeline
 #include "Sync.hpp" // Semaphores & Fences
 #include "Vertex.hpp" // Vertex definiton
 #include "Utils.hpp" // Helper functions
+#include "ImGuiOverlay.hpp" // User Interface
 
 // MVP Matrix
 struct UniformBufferObject {
@@ -66,15 +67,17 @@ int main()
 	Swapchain swapchain(context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
 	GPUBuffer buffer(context, commands, vertices, indices, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
-
 	GPUImage image(context, commands, TEXTURE_PATH, swapchain.getExtent());
 	image.createMSAAColorImage(swapchain.getExtent().width, swapchain.getExtent().height, swapchain.getFormat());
-
 	DescriptorManager descriptors(context, buffer, image, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
 	Pipeline pipeline(context, swapchain, descriptors, "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat());
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
 
 	std::cout << "Loaded " << vertices.size() << " vertices and " << indices.size() << " indices.\n";
+
+	// Initialize ImGui using existing resources
+	ImGuiOverlay imgui;
+	imgui.init(window, context, descriptors, swapchain.getFormat(), swapchain.getImageCount(), image.getMSAASamples());
 
 	// Create label
 	VkDebugUtilsLabelEXT cmdLabel = makeLabel("Command List: ", 0.2f, 0.2f, 0.8f);
@@ -83,6 +86,9 @@ int main()
 	while (!glfwWindowShouldClose(window))
 	{
 		glfwPollEvents();
+
+		imgui.newFrame();
+		imgui.drawUI();
 
 		// Wait for previous frame to finish
 		vkWaitForFences(context.getDevice(), 1, sync.getInFlightFencePtr(currentFrame), VK_TRUE, UINT64_MAX);
@@ -99,6 +105,7 @@ int main()
 		VkCommandBuffer cmd = commands.getCommandBuffer(currentFrame);
 		VkCommandBufferBeginInfo beginInfo{};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
 		vkBeginCommandBuffer(cmd, &beginInfo);
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &cmdLabel);
@@ -193,6 +200,29 @@ int main()
 		// End dynamic rendering
 		vkCmdEndRendering(cmd);
 
+		// Render ImGui on top of the resolved swapchain image
+		imgui.render();
+
+		// Imgui render pass(no depth, directly on swapchain)
+		VkRenderingAttachmentInfo imguiColorAttachment{};
+		imguiColorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+		imguiColorAttachment.imageView = swapchain.getSwapchainImageView(imageIndex);
+		imguiColorAttachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+		imguiColorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; 
+		imguiColorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+		VkRenderingInfo imguiRenderingInfo{};
+		imguiRenderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+		imguiRenderingInfo.renderArea.offset = { 0, 0 };
+		imguiRenderingInfo.renderArea.extent = swapchain.getExtent();
+		imguiRenderingInfo.layerCount = 1;
+		imguiRenderingInfo.colorAttachmentCount = 1;
+		imguiRenderingInfo.pColorAttachments = &imguiColorAttachment;
+
+		vkCmdBeginRendering(cmd, &imguiRenderingInfo);
+		imgui.recordCommands(cmd);
+		vkCmdEndRendering(cmd);
+
 		// Transition swapchain image from ATTACHMENT_OPTIMAL to PRESENT_SRC_KHR
 		VkImageMemoryBarrier2 postRenderBarrier{};
 		postRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -216,10 +246,10 @@ int main()
 		postDepInfo.imageMemoryBarrierCount = 1;
 		postDepInfo.pImageMemoryBarriers = &postRenderBarrier;
 
-		vkCmdPipelineBarrier2(commands.getCommandBuffer(currentFrame), &postDepInfo);
+		vkCmdPipelineBarrier2(cmd, &postDepInfo);
 
 		vkCmdEndDebugUtilsLabelEXT(cmd);
-		vkEndCommandBuffer(commands.getCommandBuffer(currentFrame));
+		vkEndCommandBuffer(cmd);
 
 		updateUniformBuffer(currentFrame, buffer);
 
@@ -234,7 +264,7 @@ int main()
 
 		VkCommandBufferSubmitInfo cmdBufferInfo{};
 		cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-		cmdBufferInfo.commandBuffer = commands.getCommandBuffer(currentFrame);
+		cmdBufferInfo.commandBuffer = cmd;
 
 		VkSemaphoreSubmitInfo signalSemaphoreInfo{};
 		signalSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
@@ -254,7 +284,7 @@ int main()
 		VkPresentInfoKHR presentInfo{};
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 		presentInfo.waitSemaphoreCount = 1;
-		VkSemaphore presentWaitSemaphores[] = { sync.getRenderFinishedSemaphore(imageIndex)};
+		VkSemaphore presentWaitSemaphores[] = { sync.getRenderFinishedSemaphore(imageIndex) };
 		presentInfo.pWaitSemaphores = presentWaitSemaphores;
 		VkSwapchainKHR swapChains[] = { swapchain.getSwapchain() };
 		presentInfo.swapchainCount = 1;

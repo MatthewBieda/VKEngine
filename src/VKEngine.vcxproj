@@ -103,7 +103,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)Include;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb;$(SolutionDir)ThirdParty\tinyOBJ</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Include;$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb;$(SolutionDir)ThirdParty\tinyOBJ;$(SolutionDir)ThirdParty\ImGui</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <TreatWarningAsError>true</TreatWarningAsError>
@@ -124,7 +124,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)Include;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb;$(SolutionDir)ThirdParty\tinyOBJ</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Include;$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb;$(SolutionDir)ThirdParty\tinyOBJ;$(SolutionDir)ThirdParty\ImGui</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <TreatWarningAsError>true</TreatWarningAsError>
@@ -138,10 +138,17 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\ThirdParty\ImGui\imgui.cpp" />
+    <ClCompile Include="..\ThirdParty\ImGui\imgui_draw.cpp" />
+    <ClCompile Include="..\ThirdParty\ImGui\imgui_impl_glfw.cpp" />
+    <ClCompile Include="..\ThirdParty\ImGui\imgui_impl_vulkan.cpp" />
+    <ClCompile Include="..\ThirdParty\ImGui\imgui_tables.cpp" />
+    <ClCompile Include="..\ThirdParty\ImGui\imgui_widgets.cpp" />
     <ClCompile Include="Commands.cpp" />
     <ClCompile Include="DescriptorManager.cpp" />
     <ClCompile Include="GPUBuffer.cpp" />
     <ClCompile Include="GPUImage.cpp" />
+    <ClCompile Include="ImGuiOverlay.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Pipeline.cpp" />
     <ClCompile Include="Swapchain.cpp" />
@@ -159,6 +166,7 @@
     <ClInclude Include="..\Include\DescriptorManager.hpp" />
     <ClInclude Include="..\Include\GPUBuffer.hpp" />
     <ClInclude Include="..\Include\GPUImage.hpp" />
+    <ClInclude Include="..\Include\ImGuiOverlay.hpp" />
     <ClInclude Include="..\Include\Pipeline.hpp" />
     <ClInclude Include="..\Include\Swapchain.hpp" />
     <ClInclude Include="..\Include\Sync.hpp" />

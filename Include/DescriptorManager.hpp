@@ -2,7 +2,6 @@
 
 #include "volk.h"
 
-
 #include <vector>
 
 class VulkanContext;
@@ -15,6 +14,7 @@ public:
 	DescriptorManager(VulkanContext& context, GPUBuffer& buffer, GPUImage& image, uint32_t maxFramesInFlight, VkDeviceSize uniformBufferSize);
 	~DescriptorManager();
 
+	VkDescriptorPool getDescriptorPool() const { return m_descriptorPool; }
 	VkDescriptorSet getDescriptorSet(size_t frameIndex) { return m_descriptorSets[frameIndex]; }
 	VkDescriptorSetLayout getDescriptorSetLayout() const { return m_descriptorSetLayout; }
 
