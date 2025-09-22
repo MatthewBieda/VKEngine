@@ -5,6 +5,7 @@
 
 #include "vk_mem_alloc.h"
 
+#include "Utils.hpp"
 #include "VulkanContext.hpp"
 
 #include <iostream>
@@ -31,6 +32,12 @@ VulkanContext::VulkanContext(GLFWwindow* window) : m_window(window)
 	createLogicalDevice();
 	createAllocator();
 	volkLoadDevice(m_device);
+
+	nameObject(m_device, m_instance, "VulkanInstance");
+	nameObject(m_device, m_device, "Device");
+	nameObject(m_device, m_physicalDevice, "PhysicalDevice");
+	nameObject(m_device, m_surface, "Surface");
+	nameObject(m_device, m_graphicsQueue, "Queue_Graphics");
 }
 
 VulkanContext::~VulkanContext()

@@ -1,3 +1,4 @@
+#include "Utils.hpp"
 #include "Commands.hpp"
 #include "GPUImage.hpp"
 
@@ -99,6 +100,7 @@ void GPUImage::createTextureImage(const std::string& path)
 	{
 		throw std::runtime_error("Failed to create GPU image");
 	}
+	nameObject(m_context.getDevice(), m_textureImage, "Image_Texture");
 
 	VkCommandBuffer cmd = m_commands.beginSingleTimeCommands();
 
@@ -118,6 +120,9 @@ void GPUImage::createTextureImage(const std::string& path)
 	// Create view and sampler
 	createImageView(m_textureImage, imageInfo.format, VK_IMAGE_ASPECT_COLOR_BIT, m_textureImageView);
 	createSampler();
+
+	nameObject(m_context.getDevice(), m_textureImageView, "ImageView_Texture");
+	nameObject(m_context.getDevice(), m_textureSampler, "Sampler_Texture");
 }
 
 void GPUImage::createDepthImage(uint32_t width, uint32_t height)
@@ -146,6 +151,7 @@ void GPUImage::createDepthImage(uint32_t width, uint32_t height)
 	{
 		throw std::runtime_error("Failed to create depth image");
 	}
+	nameObject(m_context.getDevice(), m_depthImage, "Image_Depth");
 
 	VkCommandBuffer cmd = m_commands.beginSingleTimeCommands();
 
@@ -161,6 +167,9 @@ void GPUImage::createDepthImage(uint32_t width, uint32_t height)
 	m_commands.endSingleTimeCommands(cmd);
 
 	createImageView(m_depthImage, m_depthFormat, aspect, m_depthImageView);
+
+	nameObject(m_context.getDevice(), m_depthImageView, "ImageView_Depth");
+
 }
 
 void GPUImage::createMSAAColorImage(uint32_t width, uint32_t height, VkFormat colorFormat)
@@ -187,6 +196,7 @@ void GPUImage::createMSAAColorImage(uint32_t width, uint32_t height, VkFormat co
 	{
 		throw std::runtime_error("Failed to create MSAA color image");
 	}
+	nameObject(m_context.getDevice(), m_msaaColorImage, "Image_MSAA");
 
 	VkCommandBuffer cmd = m_commands.beginSingleTimeCommands();
 
@@ -195,6 +205,8 @@ void GPUImage::createMSAAColorImage(uint32_t width, uint32_t height, VkFormat co
 	m_commands.endSingleTimeCommands(cmd);
 
 	createImageView(m_msaaColorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT, m_msaaColorImageView);
+
+	nameObject(m_context.getDevice(), m_msaaColorImageView, "ImageView_MSAA");
 }
 
 void GPUImage::generateMipmaps(VkCommandBuffer cmd, uint32_t width, uint32_t height)

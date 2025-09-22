@@ -1,7 +1,9 @@
-#include "GPUBuffer.hpp"
+#include "Utils.hpp"
 
+#include "GPUBuffer.hpp"
 #include "VulkanContext.hpp"
 #include "Commands.hpp"
+
 #include <stdexcept>
 
 GPUBuffer::GPUBuffer(VulkanContext& context, Commands& commands, const std::vector<Vertex>& vertices, const std::vector<uint32_t> indices, uint32_t maxFramesInFlight, VkDeviceSize uniformBufferSize)
@@ -71,6 +73,7 @@ void GPUBuffer::createVertexBuffer(const std::vector<Vertex>& vertices)
 	{
 		throw std::runtime_error("Failed to create vertex buffer");
 	};
+	nameObject(m_context.getDevice(), m_vertexBuffer, "VertexBuffer_Main");
 
 	// copy staging -> GPU
 	copyBuffer(stagingBuffer, m_vertexBuffer, bufferSize);
@@ -115,6 +118,7 @@ void GPUBuffer::createIndexBuffer(const std::vector<uint32_t>& indices)
 	{
 		throw std::runtime_error("Failed to create Index Buffer");
 	};
+	nameObject(m_context.getDevice(), m_indexBuffer, "IndexBuffer_Main");
 
 	// copy staging -> GPU
 	copyBuffer(stagingBuffer, m_indexBuffer, bufferSize);
@@ -146,6 +150,7 @@ void GPUBuffer::createUniformBuffers(VkDeviceSize bufferSize)
 		vmaGetAllocationInfo(m_context.getAllocator(), m_uniformAllocations[i], &allocInfoDetails);
 		m_uniformBuffersMapped[i] = allocInfoDetails.pMappedData;
 	}
+	nameObjects(m_context.getDevice(), m_uniformBuffers, "UniformBuffers_Frame");
 }
 
 void GPUBuffer::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)

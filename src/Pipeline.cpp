@@ -1,3 +1,5 @@
+#include "Utils.hpp"
+
 #include "Pipeline.hpp"
 #include "VulkanContext.hpp" 
 #include "Swapchain.hpp"
@@ -43,6 +45,7 @@ VkShaderModule Pipeline::createShaderModule(const std::vector<char>& code)
 		throw std::runtime_error("Failed to create shader module!");
 	}
 	return shaderModule;
+
 }
 
 std::vector<char> Pipeline::readFile(const std::string& filename)
@@ -173,6 +176,7 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 		throw std::runtime_error("Failed to create pipeline layout");
 	}
 	std::cout << "Pipeline layout created successfully" << std::endl;
+	nameObject(m_context.getDevice(), m_layout, "PipelineLayout_Main");
 
 	// Create graphics pipeline with dynamic rendering support
 
@@ -223,6 +227,7 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 		throw std::runtime_error("Failed to create graphics pipeline");
 	}
 	std::cout << "Graphics Pipeline created successfully" << std::endl;
+	nameObject(m_context.getDevice(), m_pipeline, "GraphicsPipeline_Main");
 
 	// Destory shader modules after pipeline creation
 	vkDestroyShaderModule(m_context.getDevice(), vertModule, nullptr);

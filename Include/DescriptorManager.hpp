@@ -29,7 +29,7 @@ private:
 
 	uint32_t m_maxFramesInFlight{};
 
-	void createDescriptorSetLayout();
 	void createDescriptorPool();
+	void createDescriptorSetLayout();
 	void createDescriptorSets(VkDeviceSize uniformBufferSize);
 };

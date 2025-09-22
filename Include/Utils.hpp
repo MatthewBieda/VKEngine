@@ -1,6 +1,8 @@
 #pragma once
 
 #include "volk.h"
+#include <vector>
+#include <string>
 
 inline VkDebugUtilsLabelEXT makeLabel(const char* name,
 	float r = 1.0f,
@@ -85,4 +87,38 @@ inline void nameObject(VkDevice device, VkSemaphore obj, const char* name) {
 
 inline void nameObject(VkDevice device, VkFence obj, const char* name) {
 	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_FENCE, name);
+}
+
+inline void nameObject(VkDevice device, VkInstance obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_INSTANCE, name);
+}
+
+inline void nameObject(VkDevice device, VkSurfaceKHR obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_SURFACE_KHR, name);
+}
+
+inline void nameObject(VkDevice device, VkSwapchainKHR obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_SWAPCHAIN_KHR, name);
+}
+
+inline void nameObject(VkDevice device, VkDevice obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_DEVICE, name);
+}
+
+inline void nameObject(VkDevice device, VkPhysicalDevice obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_PHYSICAL_DEVICE, name);
+}
+
+inline void nameObject(VkDevice device, VkQueue obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_QUEUE, name);
+}
+
+template<typename T>
+void nameObjects(VkDevice device, const std::vector<T>& objects, const std::string& baseName)
+{
+	for (size_t i = 0; i < objects.size(); ++i)
+	{
+		std::string name = baseName + std::to_string(i);
+		nameObject(device, objects[i], name.c_str());
+	}
 }

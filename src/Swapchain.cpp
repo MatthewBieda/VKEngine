@@ -1,5 +1,7 @@
 #include <iostream>
 
+#include "Utils.hpp"
+
 #include "Swapchain.hpp"
 #include "VulkanContext.hpp" 
 
@@ -106,6 +108,7 @@ void Swapchain::createSwapchain()
 		throw std::runtime_error("Failed to create swapchain!");
 	}
 	std::cout << "Swapchain created successfully" << std::endl;
+	nameObject(m_context.getDevice(), m_swapchain, "Swapchain");
 
 	// Retrieve swapchain images
 	vkGetSwapchainImagesKHR(m_context.getDevice(), m_swapchain, &imageCount, nullptr);

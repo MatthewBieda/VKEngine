@@ -1,3 +1,5 @@
+#include "Utils.hpp"
+
 #include "Commands.hpp"
 #include "VulkanContext.hpp"
 
@@ -16,6 +18,7 @@ Commands::Commands(VulkanContext& context, uint32_t maxFramesInFlight)
 		throw std::runtime_error("Failed to create command pool!");
 	}
 	std::cout << "Command Pool created successfully" << std::endl;
+	nameObject(m_context.getDevice(), m_commandPool, "CommandPool_Global");
 
 	m_commandBuffers.resize(m_maxFramesInFlight);
 	VkCommandBufferAllocateInfo allocInfo{};
@@ -29,6 +32,7 @@ Commands::Commands(VulkanContext& context, uint32_t maxFramesInFlight)
 		throw std::runtime_error("Failed to allocate command buffers!");
 	}
 	std::cout << "Command Buffers allocated successfully" << std::endl;
+	nameObjects(m_context.getDevice(), m_commandBuffers, "CommandBuffer_Frame");
 }
 
 Commands::~Commands()

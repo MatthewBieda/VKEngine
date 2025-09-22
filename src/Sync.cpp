@@ -1,3 +1,5 @@
+#include "Utils.hpp"
+
 #include "Sync.hpp"
 #include "VulkanContext.hpp"
 #include "Swapchain.hpp"
@@ -29,6 +31,9 @@ Sync::Sync(VulkanContext& context, Swapchain& swapchain, uint32_t maxFramesInFli
 		std::cout << "Syncronization primitives for frame: " << i << " created successfully" << std::endl;
 	}
 
+	nameObjects(m_context.getDevice(), m_imageAvailableSemaphores, "Semaphore_ImageAvailable_Frame");
+	nameObjects(m_context.getDevice(), m_inFlightFences, "Fence_InFlight_Frame");
+
 	for (size_t i = 0; i < m_swapchain.getImageCount(); ++i)
 	{
 		if (vkCreateSemaphore(m_context.getDevice(), &semaphoreInfo, nullptr, &m_renderFinishedSemaphores[i]) != VK_SUCCESS)
@@ -37,6 +42,8 @@ Sync::Sync(VulkanContext& context, Swapchain& swapchain, uint32_t maxFramesInFli
 		}
 		std::cout << "Render finished semaphore for frame: " << i << " created successfully" << std::endl;
 	}
+
+	nameObjects(m_context.getDevice(), m_renderFinishedSemaphores, "Semaphore_RenderFinished_Image");
 }
 
 Sync::~Sync()
