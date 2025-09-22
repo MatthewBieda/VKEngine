@@ -116,4 +116,3 @@ void DescriptorManager::createDescriptorSets(VkDeviceSize uniformBufferSize)
 		vkUpdateDescriptorSets(m_context.getDevice(), static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 	}
 }
-
