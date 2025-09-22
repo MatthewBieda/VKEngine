@@ -14,7 +14,7 @@ public:
 	ImGuiOverlay() = default;
 	~ImGuiOverlay();
 
-	// Initaliz ImGui with Vulkan context
+	// Initalize ImGui with Vulkan context
 	void init(GLFWwindow* window, VulkanContext& context, DescriptorManager& descriptors, VkFormat swapchainFormat, uint32_t imageCount, VkSampleCountFlagBits msaaSamples);
 
 	// Begin new frame

@@ -52,7 +52,7 @@ VkCommandBuffer Commands::beginSingleTimeCommands()
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
 	vkBeginCommandBuffer(cmd, &beginInfo);
-	return VkCommandBuffer();
+	return cmd;
 }
 
 void Commands::endSingleTimeCommands(VkCommandBuffer cmd)

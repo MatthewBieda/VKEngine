@@ -100,20 +100,7 @@ void GPUImage::createTextureImage(const std::string& path)
 		throw std::runtime_error("Failed to create GPU image");
 	}
 
-	// Record all commands in one command buffer
-	VkCommandBufferAllocateInfo allocInfoCmd{};
-	allocInfoCmd.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocInfoCmd.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	allocInfoCmd.commandPool = m_commands.getCommandPool();
-	allocInfoCmd.commandBufferCount = 1;
-
-	VkCommandBuffer cmd;
-	vkAllocateCommandBuffers(m_context.getDevice(), &allocInfoCmd, &cmd);
-
-	VkCommandBufferBeginInfo beginInfo{};
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	vkBeginCommandBuffer(cmd, &beginInfo);
+	VkCommandBuffer cmd = m_commands.beginSingleTimeCommands();
 
 	// Transition base mip level for transfer
 	transitionImageLayout(cmd, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, m_textureImage, VK_IMAGE_ASPECT_COLOR_BIT, 0, 1);
@@ -124,17 +111,7 @@ void GPUImage::createTextureImage(const std::string& path)
 	// Generate mipmaps
 	generateMipmaps(cmd, texWidth, texHeight);
 
-	vkEndCommandBuffer(cmd);
-
-	VkSubmitInfo submitInfo{};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &cmd;
-
-	vkQueueSubmit(m_context.getGraphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE);
-	vkQueueWaitIdle(m_context.getGraphicsQueue());
-
-	vkFreeCommandBuffers(m_context.getDevice(), m_commands.getCommandPool(), 1, &cmd);
+	m_commands.endSingleTimeCommands(cmd);
 
 	vmaDestroyBuffer(m_context.getAllocator(), stagingBuffer, stagingAllocation);
 
@@ -170,19 +147,7 @@ void GPUImage::createDepthImage(uint32_t width, uint32_t height)
 		throw std::runtime_error("Failed to create depth image");
 	}
 
-	VkCommandBufferAllocateInfo allocInfoCmd{};
-	allocInfoCmd.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocInfoCmd.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	allocInfoCmd.commandPool = m_commands.getCommandPool();
-	allocInfoCmd.commandBufferCount = 1;
-
-	VkCommandBuffer cmd;
-	vkAllocateCommandBuffers(m_context.getDevice(), &allocInfoCmd, &cmd);
-
-	VkCommandBufferBeginInfo beginInfo{};
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	vkBeginCommandBuffer(cmd, &beginInfo);
+	VkCommandBuffer cmd = m_commands.beginSingleTimeCommands();
 
 	// Transition depth layout
 	VkImageAspectFlags aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
@@ -193,17 +158,7 @@ void GPUImage::createDepthImage(uint32_t width, uint32_t height)
 
 	transitionImageLayout(cmd, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, m_depthImage, aspect, 0, 1);
 
-	vkEndCommandBuffer(cmd);
-
-	VkSubmitInfo submitInfo{};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &cmd;
-
-	vkQueueSubmit(m_context.getGraphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE);
-	vkQueueWaitIdle(m_context.getGraphicsQueue());
-
-	vkFreeCommandBuffers(m_context.getDevice(), m_commands.getCommandPool(), 1, &cmd);
+	m_commands.endSingleTimeCommands(cmd);
 
 	createImageView(m_depthImage, m_depthFormat, aspect, m_depthImageView);
 }
@@ -233,33 +188,11 @@ void GPUImage::createMSAAColorImage(uint32_t width, uint32_t height, VkFormat co
 		throw std::runtime_error("Failed to create MSAA color image");
 	}
 
-	VkCommandBufferAllocateInfo allocInfoCmd{};
-	allocInfoCmd.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocInfoCmd.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	allocInfoCmd.commandPool = m_commands.getCommandPool();
-	allocInfoCmd.commandBufferCount = 1;
-
-	VkCommandBuffer cmd;
-	vkAllocateCommandBuffers(m_context.getDevice(), &allocInfoCmd, &cmd);
-
-	VkCommandBufferBeginInfo beginInfo{};
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	vkBeginCommandBuffer(cmd, &beginInfo);
+	VkCommandBuffer cmd = m_commands.beginSingleTimeCommands();
 
 	transitionImageLayout(cmd, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, m_msaaColorImage, VK_IMAGE_ASPECT_COLOR_BIT, 0, 1);
 
-	vkEndCommandBuffer(cmd);
-
-	VkSubmitInfo submitInfo{};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &cmd;
-
-	vkQueueSubmit(m_context.getGraphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE);
-	vkQueueWaitIdle(m_context.getGraphicsQueue());
-
-	vkFreeCommandBuffers(m_context.getDevice(), m_commands.getCommandPool(), 1, &cmd);
+	m_commands.endSingleTimeCommands(cmd);
 
 	createImageView(m_msaaColorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT, m_msaaColorImageView);
 }
