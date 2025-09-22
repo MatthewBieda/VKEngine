@@ -81,7 +81,6 @@ int main()
 
 	// Create label
 	VkDebugUtilsLabelEXT cmdLabel = makeLabel("Command List: ", 0.2f, 0.2f, 0.8f);
-	nameObject(context.getDevice(), (uint64_t)buffer.getVertexBuffer(), VK_OBJECT_TYPE_BUFFER, "ModelVertexBuffer");
 
 	while (!glfwWindowShouldClose(window))
 	{

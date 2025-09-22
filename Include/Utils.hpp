@@ -17,7 +17,7 @@ inline VkDebugUtilsLabelEXT makeLabel(const char* name,
 	return label;
 }
 
-inline void nameObject(VkDevice device, uint64_t handle, VkObjectType type, const char* name)
+inline void nameObjectRaw(VkDevice device, uint64_t handle, VkObjectType type, const char* name)
 {
 
 	VkDebugUtilsObjectNameInfoEXT info{
@@ -28,4 +28,61 @@ inline void nameObject(VkDevice device, uint64_t handle, VkObjectType type, cons
 	};
 
 	vkSetDebugUtilsObjectNameEXT(device, &info);
+}
+
+// Type-safe overloads
+inline void nameObject(VkDevice device, VkBuffer obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_BUFFER, name);
+}
+
+inline void nameObject(VkDevice device, VkImage obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_IMAGE, name);
+}
+
+inline void nameObject(VkDevice device, VkImageView obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_IMAGE_VIEW, name);
+}
+
+inline void nameObject(VkDevice device, VkPipeline obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_PIPELINE, name);
+}
+
+inline void nameObject(VkDevice device, VkPipelineLayout obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_PIPELINE_LAYOUT, name);
+}
+
+inline void nameObject(VkDevice device, VkShaderModule obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_SHADER_MODULE, name);
+}
+
+inline void nameObject(VkDevice device, VkDescriptorSetLayout obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, name);
+}
+
+inline void nameObject(VkDevice device, VkDescriptorPool obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_DESCRIPTOR_POOL, name);
+}
+
+inline void nameObject(VkDevice device, VkDescriptorSet obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_DESCRIPTOR_SET, name);
+}
+
+inline void nameObject(VkDevice device, VkCommandPool obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_COMMAND_POOL, name);
+}
+
+inline void nameObject(VkDevice device, VkCommandBuffer obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_COMMAND_BUFFER, name);
+}
+
+inline void nameObject(VkDevice device, VkSampler obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_SAMPLER, name);
+}
+
+inline void nameObject(VkDevice device, VkSemaphore obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_SEMAPHORE, name);
+}
+
+inline void nameObject(VkDevice device, VkFence obj, const char* name) {
+	nameObjectRaw(device, (uint64_t)obj, VK_OBJECT_TYPE_FENCE, name);
 }
