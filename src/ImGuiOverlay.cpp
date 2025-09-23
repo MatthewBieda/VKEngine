@@ -7,8 +7,6 @@
 #include <stdexcept>
 #include <iostream>
 
-#include "glm.hpp"
-
 ImGuiOverlay::~ImGuiOverlay()
 {
 	if (m_initialized)
@@ -151,10 +149,6 @@ void ImGuiOverlay::drawUI()
 		return;
 	}
 
-	static bool showMetrics = false;
-	static float rotationSpeed = 90.0f;
-	static glm::vec3 clearColor = { 0.0f, 0.0f, 0.0f };
-
 	// Main menu bar
 	if (ImGui::BeginMainMenuBar())
 	{
@@ -175,6 +169,8 @@ void ImGuiOverlay::drawUI()
 
 	ImGui::SliderFloat("Rotation Speed", &rotationSpeed, 0.0f, 360.0f, "%.1f deg/s");
 	ImGui::ColorEdit3("Clear Color", &clearColor.x);
+	ImGui::Checkbox("Enable Depth Test", &enableDepthTest);
+	ImGui::Checkbox("Enable Wireframe", &enableWireframe);
 
 	ImGui::End();
 	

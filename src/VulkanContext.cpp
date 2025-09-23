@@ -226,30 +226,37 @@ void VulkanContext::createLogicalDevice()
 	VkPhysicalDeviceFeatures features{};
 	features.samplerAnisotropy = VK_TRUE;
 	features.sampleRateShading = VK_TRUE;
+	features.fillModeNonSolid = VK_TRUE;
 
-	// Enable dynamic rendering
+	// Enable Extended Dynamic State 3
+	VkPhysicalDeviceExtendedDynamicState3FeaturesEXT extendedDynamicState3Features{};
+	extendedDynamicState3Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT;
+	extendedDynamicState3Features.extendedDynamicState3PolygonMode = VK_TRUE;
+
+	// Enable Dynamic Rendering
 	VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures{};
 	dynamicRenderingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
 	dynamicRenderingFeatures.dynamicRendering = VK_TRUE;
 
-	// Enable syncronization2 
+	// Enable Syncronization2 
 	VkPhysicalDeviceSynchronization2Features synchronization2Features{};
 	synchronization2Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
 	synchronization2Features.synchronization2 = VK_TRUE;
 
 	// Link the structs together
+	extendedDynamicState3Features.pNext = &dynamicRenderingFeatures;
 	dynamicRenderingFeatures.pNext = &synchronization2Features;
 
 	VkDeviceCreateInfo deviceCreateInfo{};
 	deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	deviceCreateInfo.pNext = &dynamicRenderingFeatures;
+	deviceCreateInfo.pNext = &extendedDynamicState3Features;
 	deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
 	deviceCreateInfo.queueCreateInfoCount = 1;
 	deviceCreateInfo.pEnabledFeatures = &features;
-	deviceCreateInfo.enabledExtensionCount = 1;
 
-	const char* deviceExt = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
-	deviceCreateInfo.ppEnabledExtensionNames = &deviceExt;
+	const char* deviceExt[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME };
+	deviceCreateInfo.enabledExtensionCount = 2;
+	deviceCreateInfo.ppEnabledExtensionNames = deviceExt;
 
 	if (vkCreateDevice(m_physicalDevice, &deviceCreateInfo, nullptr, &m_device) != VK_SUCCESS)
 	{

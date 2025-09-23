@@ -32,6 +32,16 @@ void Pipeline::setScissor(VkCommandBuffer cmdBuffer, VkRect2D scissor)
 	vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
 }
 
+void Pipeline::setDepthTest(VkCommandBuffer cmdBuffer, VkBool32 depthTestEnable)
+{
+	vkCmdSetDepthTestEnable(cmdBuffer, depthTestEnable);
+}
+
+void Pipeline::setPolygonMode(VkCommandBuffer cmdBuffer, VkPolygonMode polygonMode)
+{
+	vkCmdSetPolygonModeEXT(cmdBuffer, polygonMode);
+}
+
 VkShaderModule Pipeline::createShaderModule(const std::vector<char>& code)
 {
 	VkShaderModuleCreateInfo createInfo{};
@@ -90,7 +100,9 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 	// Modern vulkan supports dynamic modification of some pipeline states
 	std::vector<VkDynamicState> dynamicStates = {
 		VK_DYNAMIC_STATE_VIEWPORT,
-		VK_DYNAMIC_STATE_SCISSOR
+		VK_DYNAMIC_STATE_SCISSOR,
+		VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE,
+		VK_DYNAMIC_STATE_POLYGON_MODE_EXT
 	};
 
 	VkPipelineDynamicStateCreateInfo dynamicStateInfo{};
@@ -114,22 +126,12 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 	inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 	inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
 
-	VkViewport viewport{};
-	viewport.x = 0.0f;
-	viewport.y = 0.0f;
-	viewport.width = (float)m_swapchain.getExtent().width;
-	viewport.height = (float)m_swapchain.getExtent().height;
-	viewport.minDepth = 0.0f;
-	viewport.maxDepth = 1.0f;
-
-	VkRect2D scissor{};
-	scissor.offset = { 0, 0 };
-	scissor.extent = m_swapchain.getExtent();
-
 	VkPipelineViewportStateCreateInfo viewportStateInfo{};
 	viewportStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
 	viewportStateInfo.viewportCount = 1;
+	viewportStateInfo.pViewports = nullptr;
 	viewportStateInfo.scissorCount = 1;
+	viewportStateInfo.pScissors = nullptr;
 
 	VkPipelineRasterizationStateCreateInfo rasterizerInfo{};
 	rasterizerInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;

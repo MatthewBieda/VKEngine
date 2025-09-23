@@ -144,7 +144,9 @@ int main()
 		colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // For presentation
 		colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		colorAttachment.clearValue = { {0.0f, 0.0f, 0.0f, 1.0f} };
+
+		const glm::vec3& cc = imgui.clearColor;
+		colorAttachment.clearValue = { {cc.r, cc.g, cc.b, 1.0f} };
 
 		// Depth Attachment - MSAA depth buffer
 		VkRenderingAttachmentInfo depthAttachment{};
@@ -169,6 +171,7 @@ int main()
 		// Start dynamic rendering
 		vkCmdBeginRendering(cmd, &renderingInfo);
 
+		// Declare dynamic states
 		VkViewport viewport{};
 		viewport.x = 0.0f;
 		viewport.y = 0.0f;
@@ -181,10 +184,14 @@ int main()
 		scissor.offset = { 0, 0 };
 		scissor.extent = swapchain.getExtent();
 
-		// Bind pipeline, set dynamic state, issue draw
+		VkPolygonMode polygonMode = imgui.enableWireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
+
+		// Bind pipeline, set dynamic state, bind buffers & descriptors, issue draw
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getPipeline());
 		pipeline.setViewport(cmd, viewport);
 		pipeline.setScissor(cmd, scissor);
+		pipeline.setDepthTest(cmd, imgui.enableDepthTest);
+		pipeline.setPolygonMode(cmd, polygonMode);
 
 		VkBuffer vertexBuffers[] = { buffer.getVertexBuffer() };
 		VkDeviceSize offsets[] = { 0 };
