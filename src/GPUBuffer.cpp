@@ -5,6 +5,7 @@
 #include "Commands.hpp"
 
 #include <stdexcept>
+#include <iostream>
 
 GPUBuffer::GPUBuffer(VulkanContext& context, Commands& commands, const std::vector<Vertex>& vertices, const std::vector<uint32_t> indices, uint32_t maxFramesInFlight, VkDeviceSize uniformBufferSize)
 	: m_context(context), m_commands(commands), m_maxFramesInFlight(maxFramesInFlight), 
@@ -74,6 +75,7 @@ void GPUBuffer::createVertexBuffer(const std::vector<Vertex>& vertices)
 		throw std::runtime_error("Failed to create vertex buffer");
 	};
 	nameObject(m_context.getDevice(), m_vertexBuffer, "VertexBuffer_Main");
+	std::cout << "Vertex Buffer created successfully" << std::endl;
 
 	// copy staging -> GPU
 	copyBuffer(stagingBuffer, m_vertexBuffer, bufferSize);
@@ -119,6 +121,7 @@ void GPUBuffer::createIndexBuffer(const std::vector<uint32_t>& indices)
 		throw std::runtime_error("Failed to create Index Buffer");
 	};
 	nameObject(m_context.getDevice(), m_indexBuffer, "IndexBuffer_Main");
+	std::cout << "Index Buffer created successfully" << std::endl;
 
 	// copy staging -> GPU
 	copyBuffer(stagingBuffer, m_indexBuffer, bufferSize);
@@ -144,6 +147,7 @@ void GPUBuffer::createUniformBuffers(VkDeviceSize bufferSize)
 		{
 			throw std::runtime_error("Failed to create Uniform Buffer");
 		}
+		std::cout << "Uniform Buffer " << i << " created successfully" << std::endl;
 
 		// Get mapped pointer
 		VmaAllocationInfo allocInfoDetails{};

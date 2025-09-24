@@ -28,14 +28,19 @@
 #include "ImGuiOverlay.hpp" // User Interface
 
 // MVP Matrix
-struct UniformBufferObject {
+struct UniformBufferObject 
+{
 	glm::mat4 model;
 	glm::mat4 view;
 	glm::mat4 proj;
 } UBO;
 
-uint32_t windowWidth = 1920;
-uint32_t windowHeight = 1080;
+struct AppState 
+{
+	uint32_t windowWidth = 1920;
+	uint32_t windowHeight = 1080;
+	bool framebufferResized = false;
+} appState;
 
 const std::string MODEL_PATH = "../Models/viking_room.obj";
 const std::string TEXTURE_PATH = "../Textures/viking_room.png";
@@ -45,6 +50,9 @@ std::vector<uint32_t> indices{};
 
 void updateUniformBuffer(uint32_t currentFrame, GPUBuffer& buffer);
 void loadModel();
+void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image);
+
+static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 
 // Only init + run loop
 int main()
@@ -58,16 +66,21 @@ int main()
 		return -1;
 	}
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-	GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "VKEngine", nullptr, nullptr);
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+	GLFWwindow* window = glfwCreateWindow(appState.windowWidth, appState.windowHeight, "VKEngine", nullptr, nullptr);
+
+	// Set the app state as user pointer so callback can access it
+	glfwSetWindowUserPointer(window, &appState);
+	glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 
 	loadModel();
 
 	VulkanContext context(window);
-	Swapchain swapchain(context);
+	Swapchain swapchain(window, context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
 	GPUBuffer buffer(context, commands, vertices, indices, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
 	GPUImage image(context, commands, TEXTURE_PATH, swapchain.getExtent());
+	image.createDepthImage(swapchain.getExtent().width, swapchain.getExtent().height);
 	image.createMSAAColorImage(swapchain.getExtent().width, swapchain.getExtent().height, swapchain.getFormat());
 	DescriptorManager descriptors(context, buffer, image, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
 	Pipeline pipeline(context, swapchain, descriptors, "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat());
@@ -91,11 +104,23 @@ int main()
 
 		// Wait for previous frame to finish
 		vkWaitForFences(context.getDevice(), 1, sync.getInFlightFencePtr(currentFrame), VK_TRUE, UINT64_MAX);
-		vkResetFences(context.getDevice(), 1, sync.getInFlightFencePtr(currentFrame));
 
 		// Acquire next swapchain image
 		uint32_t imageIndex;
-		vkAcquireNextImageKHR(context.getDevice(), swapchain.getSwapchain(), UINT64_MAX, sync.getImageAvailableSemaphore(currentFrame), VK_NULL_HANDLE, &imageIndex);
+		VkResult result = vkAcquireNextImageKHR(context.getDevice(), swapchain.getSwapchain(), UINT64_MAX, sync.getImageAvailableSemaphore(currentFrame), VK_NULL_HANDLE, &imageIndex);
+
+		if (result == VK_ERROR_OUT_OF_DATE_KHR)
+		{
+			swapchain.recreateSwapchain();
+			continue;
+		}
+		else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+		{
+			throw std::runtime_error("Failed to acquire swapchain image!");
+		}
+
+		// Only reset the fence if we are submitting work
+		vkResetFences(context.getDevice(), 1, sync.getInFlightFencePtr(currentFrame));
 
 		// Reset command buffer
 		vkResetCommandBuffer(commands.getCommandBuffer(currentFrame), 0);
@@ -265,7 +290,7 @@ int main()
 		VkSubmitInfo2 submitInfo{};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
 
-		VkSemaphoreSubmitInfo waitSemaphoreInfo{};
+		VkSemaphoreSubmitInfo waitSemaphoreInfo{};	
 		waitSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
 		waitSemaphoreInfo.semaphore = sync.getImageAvailableSemaphore(currentFrame);
 		waitSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -300,7 +325,20 @@ int main()
 		presentInfo.pImageIndices = &imageIndex;
 		presentInfo.pResults = nullptr;
 
-		vkQueuePresentKHR(context.getGraphicsQueue(), &presentInfo);
+		result = vkQueuePresentKHR(context.getGraphicsQueue(), &presentInfo);
+
+		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || appState.framebufferResized)
+		{
+			appState.framebufferResized = false;
+			recreateSwapchainResources(context, swapchain, image);
+
+			appState.windowWidth = swapchain.getExtent().width;
+			appState.windowHeight = swapchain.getExtent().height;
+		}
+		else if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to present swapchain image!");
+		}
 
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
@@ -325,7 +363,7 @@ void updateUniformBuffer(uint32_t currentFrame, GPUBuffer& buffer)
 
 	UBO.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 	UBO.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	UBO.proj = glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 10.0f);
+	UBO.proj = glm::perspective(glm::radians(45.0f), (float)appState.windowWidth / (float)appState.windowHeight, 0.1f, 10.0f);
 	// Flip Y scaling factor for Vulkan compatibility with GLM
 	UBO.proj[1][1] *= -1;
 
@@ -375,4 +413,19 @@ void loadModel()
 			indices.push_back(uniqueVertices[vertex]);
 		}
 	}
+}
+
+void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image)
+{
+	swapchain.recreateSwapchain();
+
+	// Recreate extent-dependent resources
+	image.recreateDepthImage(swapchain.getExtent().width, swapchain.getExtent().height);
+	image.recreateMSAAColorImage(swapchain.getExtent().width, swapchain.getExtent().height, swapchain.getFormat());
+}
+
+void framebufferResizeCallback(GLFWwindow* window, int width, int height)
+{
+	AppState* appState = reinterpret_cast<AppState*>(glfwGetWindowUserPointer(window));
+	appState->framebufferResized = true;
 }

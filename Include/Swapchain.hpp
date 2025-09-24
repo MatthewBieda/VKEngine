@@ -1,6 +1,7 @@
 #pragma once
 
 #include "volk.h"
+#include <GLFW/glfw3.h>
 #include <vector>
 
 class VulkanContext;
@@ -8,7 +9,7 @@ class VulkanContext;
 class Swapchain
 {
 public:
-	Swapchain(VulkanContext& context);
+	Swapchain(GLFWwindow* window, VulkanContext& context);
 
 	Swapchain(const Swapchain&) = delete;
 	Swapchain& operator=(const Swapchain&) = delete;
@@ -16,6 +17,7 @@ public:
 	Swapchain& operator=(Swapchain&&) = delete;
 
 	~Swapchain();
+	void cleanupSwapchain();
 
 	VkSwapchainKHR getSwapchain() const { return m_swapchain; }
 	VkFormat getFormat() const { return m_format; }
@@ -28,14 +30,18 @@ public:
 	VkImage getSwapchainImage(uint32_t frameIndex) const { return m_images[frameIndex]; }
 	VkImageView getSwapchainImageView(uint32_t frameIndex) const { return m_imageViews[frameIndex]; }
 
+	void recreateSwapchain();
+
 private:
 	void querySurfaceCapabilities();
+	void chooseSwapExtent();
 	void pickSurfaceFormat();
 	void pickPresentMode();
 	void createSwapchain();
 	void createImageViews();
 
 	VulkanContext& m_context;
+	GLFWwindow* m_window;
 
 	VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;
 	VkFormat m_format;

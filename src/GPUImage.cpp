@@ -7,30 +7,37 @@
 
 #include <cmath>
 #include <stdexcept>
+#include <iostream>
 
 GPUImage::GPUImage(VulkanContext& context, Commands& commands, const std::string& path, VkExtent2D extent)
 	: m_context(context), m_commands(commands) 
 {
 	createTextureImage(path);
-	createDepthImage(extent.width, extent.height);
-}
-
-GPUImage::GPUImage(VulkanContext& context, Commands& commands, VkExtent2D extent): m_context(context), m_commands(commands)
-{
-	createDepthImage(extent.width, extent.height);
 }
 
 GPUImage::~GPUImage()
 {
-	vkDestroyImageView(m_context.getDevice(), m_msaaColorImageView, nullptr);
-	vmaDestroyImage(m_context.getAllocator(), m_msaaColorImage, m_msaaColorImageAllocation);
+	if (m_msaaColorImageView != VK_NULL_HANDLE)
+	{
+		vkDestroyImageView(m_context.getDevice(), m_msaaColorImageView, nullptr);
+	}
+	if (m_msaaColorImageAllocation != VK_NULL_HANDLE)
+	{
+		vmaDestroyImage(m_context.getAllocator(), m_msaaColorImage, m_msaaColorImageAllocation);
+	}
 
 	vkDestroySampler(m_context.getDevice(), m_textureSampler, nullptr);
 	vkDestroyImageView(m_context.getDevice(), m_textureImageView, nullptr);
 	vmaDestroyImage(m_context.getAllocator(), m_textureImage, m_textureImageAllocation);
 
-	vkDestroyImageView(m_context.getDevice(), m_depthImageView, nullptr);
-	vmaDestroyImage(m_context.getAllocator(), m_depthImage, m_depthImageAllocation);
+	if (m_depthImageView != VK_NULL_HANDLE)
+	{
+		vkDestroyImageView(m_context.getDevice(), m_depthImageView, nullptr);
+	}
+	if (m_depthImageAllocation != VK_NULL_HANDLE)
+	{
+		vmaDestroyImage(m_context.getAllocator(), m_depthImage, m_depthImageAllocation);
+	}
 }
 
 void GPUImage::createTextureImage(const std::string& path)
@@ -98,9 +105,10 @@ void GPUImage::createTextureImage(const std::string& path)
 
 	if (vmaCreateImage(m_context.getAllocator(), &imageInfo, &imgAllocInfo, &m_textureImage, &m_textureImageAllocation, nullptr) != VK_SUCCESS) 
 	{
-		throw std::runtime_error("Failed to create GPU image");
+		throw std::runtime_error("Failed to create texture image");
 	}
 	nameObject(m_context.getDevice(), m_textureImage, "Image_Texture");
+	std::cout << "Texture Image created successfully" << std::endl;
 
 	VkCommandBuffer cmd = m_commands.beginSingleTimeCommands();
 
@@ -119,7 +127,10 @@ void GPUImage::createTextureImage(const std::string& path)
 
 	// Create view and sampler
 	createImageView(m_textureImage, imageInfo.format, VK_IMAGE_ASPECT_COLOR_BIT, m_textureImageView);
+	std::cout << "Texture Image View created successfully" << std::endl;
+
 	createSampler();
+	std::cout << "Texture Image Sampler created successfully" << std::endl;
 
 	nameObject(m_context.getDevice(), m_textureImageView, "ImageView_Texture");
 	nameObject(m_context.getDevice(), m_textureSampler, "Sampler_Texture");
@@ -152,6 +163,7 @@ void GPUImage::createDepthImage(uint32_t width, uint32_t height)
 		throw std::runtime_error("Failed to create depth image");
 	}
 	nameObject(m_context.getDevice(), m_depthImage, "Image_Depth");
+	std::cout << "Depth Image created successfully" << std::endl;
 
 	VkCommandBuffer cmd = m_commands.beginSingleTimeCommands();
 
@@ -167,9 +179,21 @@ void GPUImage::createDepthImage(uint32_t width, uint32_t height)
 	m_commands.endSingleTimeCommands(cmd);
 
 	createImageView(m_depthImage, m_depthFormat, aspect, m_depthImageView);
+	std::cout << "Depth Image View created successfully" << std::endl;
 
 	nameObject(m_context.getDevice(), m_depthImageView, "ImageView_Depth");
+}
 
+void GPUImage::recreateDepthImage(uint32_t width, uint32_t height)
+{
+	cleanupDepthResources();
+	createDepthImage(width, height);
+}
+
+void GPUImage::cleanupDepthResources()
+{
+	vkDestroyImageView(m_context.getDevice(), m_depthImageView, nullptr);
+	vmaDestroyImage(m_context.getAllocator(), m_depthImage, m_depthImageAllocation);
 }
 
 void GPUImage::createMSAAColorImage(uint32_t width, uint32_t height, VkFormat colorFormat)
@@ -197,6 +221,7 @@ void GPUImage::createMSAAColorImage(uint32_t width, uint32_t height, VkFormat co
 		throw std::runtime_error("Failed to create MSAA color image");
 	}
 	nameObject(m_context.getDevice(), m_msaaColorImage, "Image_MSAA");
+	std::cout << "MSAA Image created successfully" << std::endl;
 
 	VkCommandBuffer cmd = m_commands.beginSingleTimeCommands();
 
@@ -205,8 +230,21 @@ void GPUImage::createMSAAColorImage(uint32_t width, uint32_t height, VkFormat co
 	m_commands.endSingleTimeCommands(cmd);
 
 	createImageView(m_msaaColorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT, m_msaaColorImageView);
+	std::cout << "MSAA Image View created successfully" << std::endl;
 
 	nameObject(m_context.getDevice(), m_msaaColorImageView, "ImageView_MSAA");
+}
+
+void GPUImage::recreateMSAAColorImage(uint32_t width, uint32_t height, VkFormat colorFormat)
+{
+	cleanupMSAAResources();
+	createMSAAColorImage(width, height, colorFormat);
+}
+
+void GPUImage::cleanupMSAAResources()
+{
+	vkDestroyImageView(m_context.getDevice(), m_msaaColorImageView, nullptr);
+	vmaDestroyImage(m_context.getAllocator(), m_msaaColorImage, m_msaaColorImageAllocation);
 }
 
 void GPUImage::generateMipmaps(VkCommandBuffer cmd, uint32_t width, uint32_t height)

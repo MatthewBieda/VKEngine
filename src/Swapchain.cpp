@@ -1,13 +1,15 @@
 #include <iostream>
+#include <algorithm>
 
 #include "Utils.hpp"
 
 #include "Swapchain.hpp"
 #include "VulkanContext.hpp" 
 
-Swapchain::Swapchain(VulkanContext& context): m_context(context)
+Swapchain::Swapchain(GLFWwindow* window, VulkanContext& context): m_window(window), m_context(context)
 {
 	querySurfaceCapabilities();
+	chooseSwapExtent();
 	pickSurfaceFormat();
 	pickPresentMode();
 	createSwapchain();
@@ -16,12 +18,43 @@ Swapchain::Swapchain(VulkanContext& context): m_context(context)
 
 Swapchain::~Swapchain()
 {
+	cleanupSwapchain();
+}
+
+void Swapchain::cleanupSwapchain()
+{
 	for (const VkImageView& imageView : m_imageViews)
 	{
 		vkDestroyImageView(m_context.getDevice(), imageView, nullptr);
 	}
 
 	vkDestroySwapchainKHR(m_context.getDevice(), m_swapchain, nullptr);
+}
+
+void Swapchain::recreateSwapchain()
+{
+	// Handle window minimization
+	int width = 0, height = 0;
+	glfwGetFramebufferSize(m_window, &width, &height);
+	while (width == 0 || height == 0)
+	{
+		glfwGetFramebufferSize(m_window, &width, &height);
+		glfwWaitEvents();
+	}
+
+	vkDeviceWaitIdle(m_context.getDevice());
+
+	cleanupSwapchain();
+
+	std::cout << "=== RECREATING SWAPCHAIN ===" << std::endl;
+	querySurfaceCapabilities();  // Re-query surface capabilities (CRITICAL!)
+	chooseSwapExtent();          // Calculate new extent with new capabilities
+	pickSurfaceFormat();         // Re-pick format (might have changed)
+	pickPresentMode();           // Re-pick present mode (might have changed)
+	createSwapchain();           // Create with all updated values
+	createImageViews();          // Create views for new images
+	std::cout << "=== SWAPCHAIN RECREATION COMPLETE ===" << std::endl;
+
 }
 
 void Swapchain::pickSurfaceFormat()
@@ -76,6 +109,38 @@ void Swapchain::querySurfaceCapabilities()
 	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_context.getPhysicalDevice(), m_context.getSurface(), &m_surfaceCapabilities);
 }
 
+void Swapchain::chooseSwapExtent()
+{
+	if (m_surfaceCapabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+	{
+		std::cout << "Using surface current extent: " << m_surfaceCapabilities.currentExtent.width << "x" <<
+			m_surfaceCapabilities.currentExtent.height << std::endl;
+		m_extent = m_surfaceCapabilities.currentExtent;
+	}
+	else
+	{
+		int width, height;
+		glfwGetFramebufferSize(m_window, &width, &height);
+		std::cout << "Surface extent is undefined, using framebuffer size: "
+				  << width << "x" << height << std::endl;
+
+		VkExtent2D actualExtent = {
+			static_cast<uint32_t>(width),
+			static_cast<uint32_t>(height)
+		};
+
+		actualExtent.width = std::clamp(actualExtent.width,
+										 m_surfaceCapabilities.minImageExtent.width,
+										 m_surfaceCapabilities.maxImageExtent.width);
+		actualExtent.height = std::clamp(actualExtent.height,
+										 m_surfaceCapabilities.minImageExtent.height,
+										 m_surfaceCapabilities.maxImageExtent.height);
+
+		std::cout << "Clamped extent: " << actualExtent.width << "X" << actualExtent.height << std::endl;
+		m_extent = actualExtent;
+	}
+}
+
 void Swapchain::createSwapchain()
 {
 	VkSwapchainCreateInfoKHR swapchainCreateInfo{};
@@ -88,7 +153,7 @@ void Swapchain::createSwapchain()
 		imageCount = m_surfaceCapabilities.maxImageCount;
 	}
 
-	m_extent = m_surfaceCapabilities.currentExtent;
+	std::cout << "Creating swapchain with extent: " << m_extent.width << "x" << m_extent.height << std::endl;
 
 	swapchainCreateInfo.minImageCount = imageCount;
 	swapchainCreateInfo.imageFormat = m_chosenFormat.format;
@@ -114,6 +179,8 @@ void Swapchain::createSwapchain()
 	vkGetSwapchainImagesKHR(m_context.getDevice(), m_swapchain, &imageCount, nullptr);
 	m_images.resize(imageCount);
 	vkGetSwapchainImagesKHR(m_context.getDevice(), m_swapchain, &imageCount, m_images.data());
+
+	nameObjects(m_context.getDevice(), m_images, "Image_Swapchain_");
 }
 
 void Swapchain::createImageViews()
@@ -140,6 +207,7 @@ void Swapchain::createImageViews()
 		{
 			throw std::runtime_error("Could not create Image View!");
 		}
-		std::cout << "Image View " << i << " created successfully" << std::endl;
+		std::cout << "Swapchain Image View " << i << " created successfully" << std::endl;
 	}
+	nameObjects(m_context.getDevice(), m_imageViews, "ImageView_Swapchain_");
 }

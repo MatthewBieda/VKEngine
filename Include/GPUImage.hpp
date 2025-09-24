@@ -26,9 +26,13 @@ public:
 	VkImageView getDepthImageView() const { return m_depthImageView; }
 	VkImage getDepthImage() const { return m_depthImage; }
 	VkFormat getDepthFormat() const { return m_depthFormat; }
+	void recreateDepthImage(uint32_t width, uint32_t height);
+	void cleanupDepthResources();
 
 	VkImageView getMSAAColorImageView() const { return m_msaaColorImageView; }
 	VkSampleCountFlagBits getMSAASamples() const { return m_msaaSamples; }
+	void recreateMSAAColorImage(uint32_t width, uint32_t height, VkFormat colorFormat);
+	void cleanupMSAAResources();
 
 private:
 	VulkanContext& m_context;

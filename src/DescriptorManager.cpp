@@ -6,6 +6,7 @@
 #include "DescriptorManager.hpp"
 
 #include <stdexcept>
+#include <iostream>
 #include <array>
 
 DescriptorManager::DescriptorManager(VulkanContext& context, GPUBuffer& buffer, GPUImage& image, uint32_t maxFramesInFlight, VkDeviceSize uniformBufferSize):
@@ -41,6 +42,7 @@ void DescriptorManager::createDescriptorPool()
 	{
 		throw std::runtime_error("Failed to create descriptor pool");
 	}
+	std::cout << "Descriptor Pool created successfully" << std::endl;
 	nameObject(m_context.getDevice(), m_descriptorPool, "DescriptorPool_Global");
 }
 
@@ -70,6 +72,7 @@ void DescriptorManager::createDescriptorSetLayout()
 	{
 		throw std::runtime_error("Failed to create descriptor set layout");
 	}
+	std::cout << "Descriptor Set Layout created successfully" << std::endl;
 	nameObject(m_context.getDevice(), m_descriptorSetLayout, "DesctiptorSetLayout_Global");
 }
 
@@ -86,6 +89,7 @@ void DescriptorManager::createDescriptorSets(VkDeviceSize uniformBufferSize)
 	{
 		throw std::runtime_error("Failed to allocate descriptor sets");
 	}
+	std::cout << "Descriptor Sets Allocated successfully" << std::endl;
 	nameObjects(m_context.getDevice(), m_descriptorSets, "DescriptorSet_Frame");
 
 	for (size_t i = 0; i < m_maxFramesInFlight; ++i)
