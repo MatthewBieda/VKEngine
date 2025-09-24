@@ -228,28 +228,36 @@ void VulkanContext::createLogicalDevice()
 	features.sampleRateShading = VK_TRUE;
 	features.fillModeNonSolid = VK_TRUE;
 
+	// Enable Descriptor Indexing
+	VkPhysicalDeviceDescriptorIndexingFeatures descriptorIndexingFeatures{};
+	descriptorIndexingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+	descriptorIndexingFeatures.runtimeDescriptorArray = VK_TRUE;
+	descriptorIndexingFeatures.descriptorBindingPartiallyBound = VK_TRUE;
+	//descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount = VK_TRUE;
+	descriptorIndexingFeatures.shaderUniformBufferArrayNonUniformIndexing = VK_TRUE;
+	descriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+
 	// Enable Extended Dynamic State 3
 	VkPhysicalDeviceExtendedDynamicState3FeaturesEXT extendedDynamicState3Features{};
 	extendedDynamicState3Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT;
 	extendedDynamicState3Features.extendedDynamicState3PolygonMode = VK_TRUE;
+	extendedDynamicState3Features.pNext = &descriptorIndexingFeatures;
 
 	// Enable Dynamic Rendering
 	VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures{};
 	dynamicRenderingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
 	dynamicRenderingFeatures.dynamicRendering = VK_TRUE;
+	dynamicRenderingFeatures.pNext = &extendedDynamicState3Features;
 
 	// Enable Syncronization2 
 	VkPhysicalDeviceSynchronization2Features synchronization2Features{};
 	synchronization2Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
 	synchronization2Features.synchronization2 = VK_TRUE;
-
-	// Link the structs together
-	extendedDynamicState3Features.pNext = &dynamicRenderingFeatures;
-	dynamicRenderingFeatures.pNext = &synchronization2Features;
+	synchronization2Features.pNext = &dynamicRenderingFeatures;
 
 	VkDeviceCreateInfo deviceCreateInfo{};
 	deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	deviceCreateInfo.pNext = &extendedDynamicState3Features;
+	deviceCreateInfo.pNext = &synchronization2Features;
 	deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
 	deviceCreateInfo.queueCreateInfoCount = 1;
 	deviceCreateInfo.pEnabledFeatures = &features;
