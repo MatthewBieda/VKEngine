@@ -63,6 +63,9 @@
     <ClCompile Include="..\ThirdParty\ImGui\imgui_widgets.cpp">
       <Filter>Source Files\ImGui</Filter>
     </ClCompile>
+    <ClCompile Include="Camera.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\.gitignore">
@@ -110,6 +113,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\Include\ImGuiOverlay.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Include\Camera.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

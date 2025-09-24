@@ -20,6 +20,7 @@ public:
 	VkSwapchainKHR getSwapchain() const { return m_swapchain; }
 	VkFormat getFormat() const { return m_format; }
 	VkExtent2D getExtent() const { return m_extent; }
+
 	const std::vector<VkImageView>& getImageViews() const { return m_imageViews; }
 	const std::vector<VkImage>& getImages() const { return m_images; }
 	uint32_t getImageCount() const { return static_cast<uint32_t>(m_images.size()); }

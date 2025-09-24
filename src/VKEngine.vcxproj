@@ -144,6 +144,7 @@
     <ClCompile Include="..\ThirdParty\ImGui\imgui_impl_vulkan.cpp" />
     <ClCompile Include="..\ThirdParty\ImGui\imgui_tables.cpp" />
     <ClCompile Include="..\ThirdParty\ImGui\imgui_widgets.cpp" />
+    <ClCompile Include="Camera.cpp" />
     <ClCompile Include="Commands.cpp" />
     <ClCompile Include="DescriptorManager.cpp" />
     <ClCompile Include="GPUBuffer.cpp" />
@@ -162,6 +163,7 @@
     <None Include="..\Shaders\shader.vert" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\Include\Camera.hpp" />
     <ClInclude Include="..\Include\Commands.hpp" />
     <ClInclude Include="..\Include\DescriptorManager.hpp" />
     <ClInclude Include="..\Include\GPUBuffer.hpp" />
