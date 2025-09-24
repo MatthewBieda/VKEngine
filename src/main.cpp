@@ -185,6 +185,7 @@ int main()
 		scissor.extent = swapchain.getExtent();
 
 		VkPolygonMode polygonMode = imgui.enableWireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
+		VkCullModeFlags cullMode = imgui.enableBackfaceCulling ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
 
 		// Bind pipeline, set dynamic state, bind buffers & descriptors, issue draw
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getPipeline());
@@ -192,6 +193,7 @@ int main()
 		pipeline.setScissor(cmd, scissor);
 		pipeline.setDepthTest(cmd, imgui.enableDepthTest);
 		pipeline.setPolygonMode(cmd, polygonMode);
+		pipeline.setCullMode(cmd, cullMode);
 
 		VkBuffer vertexBuffers[] = { buffer.getVertexBuffer() };
 		VkDeviceSize offsets[] = { 0 };

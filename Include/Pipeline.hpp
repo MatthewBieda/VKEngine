@@ -26,6 +26,7 @@ public:
 	void setScissor(VkCommandBuffer cmdBuffer, VkRect2D scissor);
 	void setDepthTest(VkCommandBuffer cmdBuffer, VkBool32 depthTestEnable);
 	void setPolygonMode(VkCommandBuffer cmdBuffer, VkPolygonMode polygonMode);
+	void setCullMode(VkCommandBuffer cmdBuffer, VkCullModeFlags cullMode);
 
 	VkPipeline getPipeline() const { return m_pipeline; }
 	VkPipelineLayout getLayout() const { return m_layout; }

@@ -42,6 +42,11 @@ void Pipeline::setPolygonMode(VkCommandBuffer cmdBuffer, VkPolygonMode polygonMo
 	vkCmdSetPolygonModeEXT(cmdBuffer, polygonMode);
 }
 
+void Pipeline::setCullMode(VkCommandBuffer cmdBuffer, VkCullModeFlags cullMode)
+{
+	vkCmdSetCullMode(cmdBuffer, cullMode);
+}
+
 VkShaderModule Pipeline::createShaderModule(const std::vector<char>& code)
 {
 	VkShaderModuleCreateInfo createInfo{};
@@ -102,7 +107,8 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 		VK_DYNAMIC_STATE_VIEWPORT,
 		VK_DYNAMIC_STATE_SCISSOR,
 		VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE,
-		VK_DYNAMIC_STATE_POLYGON_MODE_EXT
+		VK_DYNAMIC_STATE_POLYGON_MODE_EXT,
+		VK_DYNAMIC_STATE_CULL_MODE
 	};
 
 	VkPipelineDynamicStateCreateInfo dynamicStateInfo{};
@@ -139,7 +145,7 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 	rasterizerInfo.rasterizerDiscardEnable = VK_FALSE;
 	rasterizerInfo.polygonMode = VK_POLYGON_MODE_FILL;
 	rasterizerInfo.lineWidth = DEFAULT_LINE_WIDTH;
-	rasterizerInfo.cullMode = VK_CULL_MODE_BACK_BIT;
+	rasterizerInfo.cullMode = VK_CULL_MODE_NONE; 
 	rasterizerInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterizerInfo.depthBiasEnable = VK_FALSE;
 

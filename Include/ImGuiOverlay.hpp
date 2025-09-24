@@ -30,10 +30,10 @@ public:
 	void drawUI();
 
 	bool showMetrics = false;
-	float rotationSpeed = 90.0f;
 	glm::vec3 clearColor = { 0.0f, 0.0f, 0.0f };
 	inline static bool enableDepthTest = VK_TRUE;
 	inline static bool enableWireframe = VK_FALSE;
+	inline static bool enableBackfaceCulling = VK_FALSE;
 
 private:
 	static void checkVkResult(VkResult err);

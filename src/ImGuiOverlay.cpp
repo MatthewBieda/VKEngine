@@ -161,16 +161,14 @@ void ImGuiOverlay::drawUI()
 	}
 
 	// Control panel
-	ImGui::Begin("Vulkan Renderer Controls");
-	ImGui::Text("Application average %.3f ms/frame (%.1f FPS"),
-		1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate;
+	ImGui::Begin("VKEngine Controls");
 
 	ImGui::Separator();
 
-	ImGui::SliderFloat("Rotation Speed", &rotationSpeed, 0.0f, 360.0f, "%.1f deg/s");
 	ImGui::ColorEdit3("Clear Color", &clearColor.x);
 	ImGui::Checkbox("Enable Depth Test", &enableDepthTest);
 	ImGui::Checkbox("Enable Wireframe", &enableWireframe);
+	ImGui::Checkbox("Enable backface culling", &enableBackfaceCulling);
 
 	ImGui::End();
 	
