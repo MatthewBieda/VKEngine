@@ -39,3 +39,8 @@ It picks up where OGLRenderer left off.
 - Loading a 3D Model and implementing Depth Testing/Multisampling/MSAA
 
 [![VKEngine - Devlog 2](https://img.youtube.com/vi/BNghrnk86vo/0.jpg)](https://www.youtube.com/watch?v=BNghrnk86vo)
+
+## Devlog 3
+- Debug Utils, ImGui integration, Dynamic pipeline state & Swapchain recreation
+
+[![VKEngine - Devlog 3](https://img.youtube.com/vi/0DAru1Xl0Jc/0.jpg)](https://www.youtube.com/watch?v=0DAru1Xl0Jc)
