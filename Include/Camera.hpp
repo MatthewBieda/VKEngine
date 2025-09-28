@@ -5,13 +5,43 @@
 
 enum class CameraMovement
 {
-	Forward,
-	Backward,
-	Left,
-	Right
+    FORWARD,
+    BACKWARD,
+    LEFT,
+    RIGHT
 };
 
+// Camera class that processes input and calculates Euler Angles, Vectors, and Matrices
 class Camera
 {
-	Camera();
+public:
+    // Camera Attributes
+    glm::vec3 Position{ 0.0f, 2.0f, 8.0f };
+    glm::vec3 Front{ 0.0f, 0.0f, -1.0f };
+    glm::vec3 Up{ 0.0f, 1.0f, 0.0f };
+    glm::vec3 Right{ 1.0f, 0.0f, 0.0f };
+
+    // Euler Angles
+    float Yaw{ -90.0f };
+    float Pitch{ 0.0f };
+
+    // Camera options
+    float MovementSpeed{ 2.5f };
+    float MouseSensitivity{ 0.2f };
+    float Zoom{ 60.0f };
+
+    // Default Constructor
+    Camera(glm::vec3 position = { 0.0f, 2.0f, 8.0f });
+
+    inline glm::mat4 GetViewMatrix() const {
+        return glm::lookAt(Position, Position + Front, Up);
+    }
+
+    void ProcessKeyboard(CameraMovement direction, float deltaTime);
+    void ProcessMouseMovement(float xOffset, float yOffset);
+    void ProcessMouseScroll(float yOffset);
+
+private:
+    static constexpr glm::vec3 WorldUp{ 0.0f, 1.0f, 0.0f };
+    void UpdateCameraVectors();
 };

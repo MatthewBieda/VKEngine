@@ -26,6 +26,7 @@
 #include "Vertex.hpp" // Vertex definiton
 #include "Utils.hpp" // Helper functions
 #include "ImGuiOverlay.hpp" // User Interface
+#include "Camera.hpp" // Camera
 
 // MVP Matrix
 struct UniformBufferObject 
@@ -48,11 +49,17 @@ const std::string TEXTURE_PATH = "../Textures/viking_room.png";
 std::vector<Vertex> vertices{};
 std::vector<uint32_t> indices{};
 
+// Create camera
+Camera camera;
+
 void updateUniformBuffer(uint32_t currentFrame, GPUBuffer& buffer);
 void loadModel();
 void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image);
 
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
+void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
+void mouseCallback(GLFWwindow* window, double xpos, double ypos);
+void processInput(GLFWwindow* window, float deltaTime);
 
 // Only init + run loop
 int main()
@@ -68,6 +75,9 @@ int main()
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 	GLFWwindow* window = glfwCreateWindow(appState.windowWidth, appState.windowHeight, "VKEngine", nullptr, nullptr);
+	glfwSetScrollCallback(window, scrollCallback);
+	glfwSetCursorPosCallback(window, mouseCallback);
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 	// Set the app state as user pointer so callback can access it
 	glfwSetWindowUserPointer(window, &appState);
@@ -95,9 +105,17 @@ int main()
 	// Create label
 	VkDebugUtilsLabelEXT cmdLabel = makeLabel("Command List: ", 0.2f, 0.2f, 0.8f);
 
+	double lastTime{};
 	while (!glfwWindowShouldClose(window))
 	{
+		// calculate delta time
+		double currentTime = glfwGetTime();
+		float deltaTime = static_cast<float>(currentTime - lastTime);
+		lastTime = currentTime;
+
+		// Poll events (mouse callbacks)
 		glfwPollEvents();
+		processInput(window, deltaTime);
 
 		imgui.newFrame();
 		imgui.drawUI();
@@ -362,8 +380,12 @@ void updateUniformBuffer(uint32_t currentFrame, GPUBuffer& buffer)
 	float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
 	UBO.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	UBO.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	UBO.proj = glm::perspective(glm::radians(45.0f), (float)appState.windowWidth / (float)appState.windowHeight, 0.1f, 10.0f);
+
+	// Use camera view matrix instead of hardcoding
+	UBO.view = camera.GetViewMatrix();
+	UBO.proj = glm::perspective(glm::radians(camera.Zoom), 
+								(float)appState.windowWidth / (float)appState.windowHeight, 
+								0.1f, 10.0f);
 	// Flip Y scaling factor for Vulkan compatibility with GLM
 	UBO.proj[1][1] *= -1;
 
@@ -428,4 +450,48 @@ void framebufferResizeCallback(GLFWwindow* window, int width, int height)
 {
 	AppState* appState = reinterpret_cast<AppState*>(glfwGetWindowUserPointer(window));
 	appState->framebufferResized = true;
+}
+
+void scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
+{
+	camera.ProcessMouseScroll(static_cast<float>(yoffset));
+}
+
+void mouseCallback(GLFWwindow* window, double xpos, double ypos)
+{
+	static bool firstMouse = true;
+	static double lastX = xpos;
+	static double lastY = ypos;
+
+	if (firstMouse)
+	{
+		lastX = xpos;
+		lastY = ypos;
+		firstMouse = false;
+	}
+
+	float xOffset = static_cast<float>(xpos - lastX);
+	float yOffset = static_cast<float>(lastY - ypos); // Reversed: y-coordinates go from bottom to top
+
+	lastX = xpos;
+	lastY = ypos;
+
+	camera.ProcessMouseMovement(xOffset, yOffset);
+}
+
+void processInput(GLFWwindow* window, float deltaTime)
+{
+	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+	{
+		glfwSetWindowShouldClose(window, true);
+	}
+
+	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+		camera.ProcessKeyboard(CameraMovement::FORWARD, deltaTime);
+	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+		camera.ProcessKeyboard(CameraMovement::BACKWARD, deltaTime);
+	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+		camera.ProcessKeyboard(CameraMovement::LEFT, deltaTime);
+	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+		camera.ProcessKeyboard(CameraMovement::RIGHT, deltaTime);
 }
