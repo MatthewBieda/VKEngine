@@ -31,9 +31,9 @@
 // MVP Matrix
 struct UniformBufferObject 
 {
-	glm::mat4 model;
-	glm::mat4 view;
-	glm::mat4 proj;
+	glm::mat4 model{};
+	glm::mat4 view{};
+	glm::mat4 proj{};
 } UBO;
 
 struct AppState 
@@ -374,12 +374,14 @@ int main()
 
 void updateUniformBuffer(uint32_t currentFrame, GPUBuffer& buffer)
 {
-	static auto startTime = std::chrono::high_resolution_clock::now();
+	glm::mat4 model = glm::mat4(1.0f);
 
-	auto currentTime = std::chrono::high_resolution_clock::now();
-	float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+	model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
+	model = glm::rotate(model, glm::radians(270.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+	model = glm::rotate(model, glm::radians(270.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));
 
-	UBO.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	UBO.model = model;
 
 	// Use camera view matrix instead of hardcoding
 	UBO.view = camera.GetViewMatrix();
