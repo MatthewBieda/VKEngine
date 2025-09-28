@@ -51,6 +51,9 @@ std::vector<uint32_t> indices{};
 
 // Create camera
 Camera camera;
+bool cursorEnabled = false;
+bool spacePressedLastFrame = false;
+bool firstMouse = true;
 
 void updateUniformBuffer(uint32_t currentFrame, GPUBuffer& buffer);
 void loadModel();
@@ -461,7 +464,11 @@ void scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
 
 void mouseCallback(GLFWwindow* window, double xpos, double ypos)
 {
-	static bool firstMouse = true;
+	if (cursorEnabled)
+	{
+		return;
+	}
+
 	static double lastX = xpos;
 	static double lastY = ypos;
 
@@ -487,13 +494,32 @@ void processInput(GLFWwindow* window, float deltaTime)
 	{
 		glfwSetWindowShouldClose(window, true);
 	}
+	
+	bool spacePressed = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
+	if (spacePressed && !spacePressedLastFrame)
+	{
+		cursorEnabled = !cursorEnabled;
+		if (cursorEnabled)
+		{
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		}
+		else
+		{
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+			firstMouse = true;
+		}
+	}
+	spacePressedLastFrame = spacePressed;
 
-	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-		camera.ProcessKeyboard(CameraMovement::FORWARD, deltaTime);
-	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-		camera.ProcessKeyboard(CameraMovement::BACKWARD, deltaTime);
-	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-		camera.ProcessKeyboard(CameraMovement::LEFT, deltaTime);
-	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-		camera.ProcessKeyboard(CameraMovement::RIGHT, deltaTime);
+	if (!cursorEnabled)
+	{
+		if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+			camera.ProcessKeyboard(CameraMovement::FORWARD, deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+			camera.ProcessKeyboard(CameraMovement::BACKWARD, deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+			camera.ProcessKeyboard(CameraMovement::LEFT, deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+			camera.ProcessKeyboard(CameraMovement::RIGHT, deltaTime);
+	}
 }
