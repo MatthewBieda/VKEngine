@@ -33,7 +33,7 @@ struct ObjectData
 {
 	glm::mat4 model{};
 };
-size_t maxObjects = 3;
+uint32_t maxObjects = 100;
 std::vector<ObjectData> objectData(maxObjects);
 
 // MVP Matrix
@@ -99,15 +99,27 @@ int main()
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
 	GPUBuffer buffer(context, commands, vertices, indices, sizeof(ObjectData));
 
-	// Create object data SSBO, create model matrices and upload to GPU
+	// Create object data SSBO
 	buffer.createObjectBuffer(maxObjects);
-	for (size_t i = 0; i < 3; ++i) {
-		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(i * 2.0f, 0.0f, 0.0f)); // offset along X
-		model = glm::rotate(model, glm::radians(270.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-		model = glm::rotate(model, glm::radians(270.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		objectData[i].model = model;
+
+	// Create grid of models
+	const int gridSizeX = 10;
+	const int gridSizeY = 10;
+	const float spacing = 2.0f; // distance between objects
+
+	size_t objIndex = 0;
+	for (int y = 0; y < gridSizeY; ++y) {
+		for (int x = 0; x < gridSizeX; ++x) {
+			glm::mat4 model = glm::mat4(1.0f);
+			model = glm::translate(model, glm::vec3(x * spacing, 0.0f, y * spacing));
+			model = glm::rotate(model, glm::radians(270.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+			model = glm::rotate(model, glm::radians(270.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+			objectData[objIndex].model = model;
+			++objIndex;
+		}
 	}
+
 	// Upload all matrices to the GPU
 	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData));
 
@@ -274,13 +286,13 @@ int main()
 		cameraData.view = camera.GetViewMatrix();
 		cameraData.proj = glm::perspective(glm::radians(camera.Zoom),
 			(float)appState.windowWidth / (float)appState.windowHeight,
-			0.1f, 10.0f);
+			0.1f, 50.0f);
 		// Flip Y scaling factor for Vulkan compatibility with GLM
 		cameraData.proj[1][1] *= -1;
 
 		vkCmdPushConstants(cmd, pipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(cameraData), &cameraData);
 
-		vkCmdDrawIndexed(cmd, static_cast<uint32_t>(indices.size()), 3, 0, 0, 0);
+		vkCmdDrawIndexed(cmd, static_cast<uint32_t>(indices.size()), maxObjects, 0, 0, 0);
 
 		// End dynamic rendering
 		vkCmdEndRendering(cmd);
