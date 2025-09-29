@@ -37,11 +37,11 @@ size_t maxObjects = 3;
 std::vector<ObjectData> objectData(maxObjects);
 
 // MVP Matrix
-struct UniformBufferObject 
+struct CameraData
 {
 	glm::mat4 view{};
 	glm::mat4 proj{};
-} UBO;
+} cameraData;
 
 struct AppState 
 {
@@ -62,7 +62,6 @@ bool cursorEnabled = false;
 bool spacePressedLastFrame = false;
 bool firstMouse = true;
 
-void updateUniformBuffer(uint32_t currentFrame, GPUBuffer& buffer);
 void loadModel();
 void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image);
 
@@ -98,7 +97,7 @@ int main()
 	VulkanContext context(window);
 	Swapchain swapchain(window, context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
-	GPUBuffer buffer(context, commands, vertices, indices, MAX_FRAMES_IN_FLIGHT, sizeof(UBO), sizeof(ObjectData));
+	GPUBuffer buffer(context, commands, vertices, indices, sizeof(ObjectData));
 
 	// Create object data SSBO, create model matrices and upload to GPU
 	buffer.createObjectBuffer(maxObjects);
@@ -174,8 +173,6 @@ int main()
 		VkCommandBufferBeginInfo beginInfo{};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-		updateUniformBuffer(currentFrame, buffer);
 
 		vkBeginCommandBuffer(cmd, &beginInfo);
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &cmdLabel);
@@ -271,11 +268,17 @@ int main()
 		vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
 		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
-		// Update UBO binding for this frame
-		descriptors.updateUBOdescriptor(currentFrame, sizeof(UniformBufferObject));
-
 		VkDescriptorSet set = descriptors.getDescriptorSet();
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getLayout(), 0, 1, &set, 0, nullptr);
+
+		cameraData.view = camera.GetViewMatrix();
+		cameraData.proj = glm::perspective(glm::radians(camera.Zoom),
+			(float)appState.windowWidth / (float)appState.windowHeight,
+			0.1f, 10.0f);
+		// Flip Y scaling factor for Vulkan compatibility with GLM
+		cameraData.proj[1][1] *= -1;
+
+		vkCmdPushConstants(cmd, pipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(cameraData), &cameraData);
 
 		vkCmdDrawIndexed(cmd, static_cast<uint32_t>(indices.size()), 3, 0, 0, 0);
 
@@ -401,19 +404,6 @@ int main()
 	return 0;
 }
 
-void updateUniformBuffer(uint32_t currentFrame, GPUBuffer& buffer)
-{
-	// Use camera view matrix instead of hardcoding
-	UBO.view = camera.GetViewMatrix();
-	UBO.proj = glm::perspective(glm::radians(camera.Zoom), 
-								(float)appState.windowWidth / (float)appState.windowHeight, 
-								0.1f, 10.0f);
-	// Flip Y scaling factor for Vulkan compatibility with GLM
-	UBO.proj[1][1] *= -1;
-
-	buffer.updateUniformBuffer(currentFrame, &UBO, sizeof(UBO));
-}
-
 void loadModel()
 {
 	tinyobj::attrib_t attrib;
@@ -445,8 +435,6 @@ void loadModel()
 				attrib.texcoords[2 * index.texcoord_index + 0],
 				1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
 			};
-
-			vertex.color = { 1.0f, 1.0f, 1.0f };
 
 			if (uniqueVertices.count(vertex) == 0)
 			{

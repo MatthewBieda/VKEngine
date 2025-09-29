@@ -18,8 +18,6 @@ public:
 	VkDescriptorPool getDescriptorPool() const { return m_descriptorPool; }
 	VkDescriptorSet getDescriptorSet() const { return m_descriptorSet; }
 
-	void updateUBOdescriptor(size_t currentFrame, VkDeviceSize uniformBufferSize);
-
 private:
 	VulkanContext& m_context;
 	GPUBuffer& m_buffer;
