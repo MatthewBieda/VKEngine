@@ -78,7 +78,7 @@ void DescriptorManager::createDescriptorPool()
 	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
 	poolInfo.pPoolSizes = poolSizes.data();
-	poolInfo.maxSets = 2;
+	poolInfo.maxSets = 2; // ImGui needs another set
 
 	if (vkCreateDescriptorPool(m_context.getDevice(), &poolInfo, nullptr, &m_descriptorPool) != VK_SUCCESS)
 	{
@@ -134,9 +134,7 @@ void DescriptorManager::createDescriptorSet()
 	persistentWrites[1].pImageInfo = &imageInfo;
 
 	vkUpdateDescriptorSets(m_context.getDevice(), static_cast<uint32_t>(persistentWrites.size()), persistentWrites.data(), 0, nullptr);
-	
 }
-
 
 void DescriptorManager::updateUBOdescriptor(size_t currentFrame, VkDeviceSize uniformBufferSize)
 {

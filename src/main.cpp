@@ -105,7 +105,8 @@ int main()
 	for (size_t i = 0; i < 3; ++i) {
 		glm::mat4 model = glm::mat4(1.0f);
 		model = glm::translate(model, glm::vec3(i * 2.0f, 0.0f, 0.0f)); // offset along X
-		model = glm::rotate(model, glm::radians(45.0f * i), glm::vec3(0.0f, 1.0f, 0.0f)); // different rotation
+		model = glm::rotate(model, glm::radians(270.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+		model = glm::rotate(model, glm::radians(270.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		objectData[i].model = model;
 	}
 	// Upload all matrices to the GPU
@@ -272,6 +273,7 @@ int main()
 
 		// Update UBO binding for this frame
 		descriptors.updateUBOdescriptor(currentFrame, sizeof(UniformBufferObject));
+
 		VkDescriptorSet set = descriptors.getDescriptorSet();
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getLayout(), 0, 1, &set, 0, nullptr);
 

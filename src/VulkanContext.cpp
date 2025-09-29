@@ -233,9 +233,9 @@ void VulkanContext::createLogicalDevice()
 	descriptorIndexingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
 	descriptorIndexingFeatures.runtimeDescriptorArray = VK_TRUE;
 	descriptorIndexingFeatures.descriptorBindingPartiallyBound = VK_TRUE;
-	//descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount = VK_TRUE;
 	descriptorIndexingFeatures.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
 	descriptorIndexingFeatures.shaderUniformBufferArrayNonUniformIndexing = VK_TRUE;
+	descriptorIndexingFeatures.shaderStorageBufferArrayNonUniformIndexing = VK_TRUE;
 	descriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
 
 	// Enable Extended Dynamic State 3
