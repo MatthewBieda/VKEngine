@@ -11,12 +11,14 @@ class GPUImage;
 class DescriptorManager
 {
 public:
-	DescriptorManager(VulkanContext& context, GPUBuffer& buffer, GPUImage& image, uint32_t maxFramesInFlight, VkDeviceSize uniformBufferSize);
+	DescriptorManager(VulkanContext& context, GPUBuffer& buffer, GPUImage& image);
 	~DescriptorManager();
 
-	VkDescriptorPool getDescriptorPool() const { return m_descriptorPool; }
-	VkDescriptorSet getDescriptorSet(size_t frameIndex) { return m_descriptorSets[frameIndex]; }
 	VkDescriptorSetLayout getDescriptorSetLayout() const { return m_descriptorSetLayout; }
+	VkDescriptorPool getDescriptorPool() const { return m_descriptorPool; }
+	VkDescriptorSet getDescriptorSet() const { return m_descriptorSet; }
+
+	void updateUBOdescriptor(size_t currentFrame, VkDeviceSize uniformBufferSize);
 
 private:
 	VulkanContext& m_context;
@@ -25,11 +27,11 @@ private:
 
 	VkDescriptorSetLayout m_descriptorSetLayout = VK_NULL_HANDLE;
 	VkDescriptorPool m_descriptorPool = VK_NULL_HANDLE;
-	std::vector<VkDescriptorSet> m_descriptorSets{};
+	VkDescriptorSet m_descriptorSet = VK_NULL_HANDLE;
 
 	uint32_t m_maxFramesInFlight{};
 
 	void createDescriptorPool();
 	void createDescriptorSetLayout();
-	void createDescriptorSets(VkDeviceSize uniformBufferSize);
+	void createDescriptorSet();
 };

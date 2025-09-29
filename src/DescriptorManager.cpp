@@ -9,12 +9,12 @@
 #include <iostream>
 #include <array>
 
-DescriptorManager::DescriptorManager(VulkanContext& context, GPUBuffer& buffer, GPUImage& image, uint32_t maxFramesInFlight, VkDeviceSize uniformBufferSize):
-	m_context(context), m_buffer(buffer), m_image(image), m_maxFramesInFlight(maxFramesInFlight), m_descriptorSets(maxFramesInFlight)
+DescriptorManager::DescriptorManager(VulkanContext& context, GPUBuffer& buffer, GPUImage& image)
+	: m_context(context), m_buffer(buffer), m_image(image)
 {
 	createDescriptorSetLayout();
 	createDescriptorPool();
-	createDescriptorSets(uniformBufferSize);
+	createDescriptorSet();
 }
 
 DescriptorManager::~DescriptorManager()
@@ -23,50 +23,40 @@ DescriptorManager::~DescriptorManager()
 	vkDestroyDescriptorSetLayout(m_context.getDevice(), m_descriptorSetLayout, nullptr);
 }
 
-void DescriptorManager::createDescriptorPool()
-{
-	std::array<VkDescriptorPoolSize, 2> poolSizes{};
-	poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	poolSizes[0].descriptorCount = static_cast<uint32_t>(m_maxFramesInFlight);
-	poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	poolSizes[1].descriptorCount = static_cast<uint32_t>(m_maxFramesInFlight * 2);
-
-	VkDescriptorPoolCreateInfo poolInfo{};
-	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-	poolInfo.pPoolSizes = poolSizes.data();
-	poolInfo.maxSets = static_cast<uint32_t>(m_maxFramesInFlight * 2);
-
-	if (vkCreateDescriptorPool(m_context.getDevice(), &poolInfo, nullptr, &m_descriptorPool) != VK_SUCCESS)
-	{
-		throw std::runtime_error("Failed to create descriptor pool");
-	}
-	std::cout << "Descriptor Pool created successfully" << std::endl;
-	nameObject(m_context.getDevice(), m_descriptorPool, "DescriptorPool_Global");
-}
-
 void DescriptorManager::createDescriptorSetLayout()
 {
-	VkDescriptorSetLayoutBinding uboLayoutBinding{};
-	uboLayoutBinding.binding = 0;
-	uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	uboLayoutBinding.descriptorCount = 1;
-	uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-	uboLayoutBinding.pImmutableSamplers = nullptr;
+	std::array<VkDescriptorSetLayoutBinding, 3> bindings{};
 
-	VkDescriptorSetLayoutBinding samplerLayoutBinding{};
-	samplerLayoutBinding.binding = 1;
-	samplerLayoutBinding.descriptorCount = 1;
-	samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	samplerLayoutBinding.pImmutableSamplers = nullptr;
-	samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	bindings[0].binding = 0;
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	bindings[0].descriptorCount = 1;
+	bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-	std::array<VkDescriptorSetLayoutBinding, 2> bindings = { uboLayoutBinding, samplerLayoutBinding };
+	bindings[1].binding = 1;
+	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	bindings[1].descriptorCount = 1;
+	bindings[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	bindings[2].binding = 2;
+	bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[2].descriptorCount = 1;
+	bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlags{};
+	std::array<VkDescriptorBindingFlags, 3> flags{};
+	flags[0] = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+	flags[1] = 0;
+	flags[2] = 0; // smapler
+	bindingFlags.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+	bindingFlags.bindingCount = static_cast<uint32_t>(flags.size());
+	bindingFlags.pBindingFlags = flags.data();
+
 	VkDescriptorSetLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
 	layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
 	layoutInfo.pBindings = bindings.data();
+	layoutInfo.pNext = &bindingFlags;
 
 	if (vkCreateDescriptorSetLayout(m_context.getDevice(), &layoutInfo, nullptr, &m_descriptorSetLayout) != VK_SUCCESS)
 	{
@@ -76,52 +66,93 @@ void DescriptorManager::createDescriptorSetLayout()
 	nameObject(m_context.getDevice(), m_descriptorSetLayout, "DesctiptorSetLayout_Global");
 }
 
-void DescriptorManager::createDescriptorSets(VkDeviceSize uniformBufferSize)
+void DescriptorManager::createDescriptorPool()
 {
-	std::vector<VkDescriptorSetLayout> layouts(m_maxFramesInFlight, m_descriptorSetLayout);
+	std::array<VkDescriptorPoolSize, 3> poolSizes{};
+	poolSizes[0] = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 }; // one UBO binding
+	poolSizes[1] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 }; // one SSBO binding
+	poolSizes[2] = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 }; // one texture binding
+
+	VkDescriptorPoolCreateInfo poolInfo{};
+	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+	poolInfo.pPoolSizes = poolSizes.data();
+	poolInfo.maxSets = 2;
+
+	if (vkCreateDescriptorPool(m_context.getDevice(), &poolInfo, nullptr, &m_descriptorPool) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create descriptor pool");
+	}
+	std::cout << "Descriptor Pool created successfully" << std::endl;
+	nameObject(m_context.getDevice(), m_descriptorPool, "DescriptorPool_Global");
+}
+
+void DescriptorManager::createDescriptorSet()
+{
 	VkDescriptorSetAllocateInfo allocInfo{};
 	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 	allocInfo.descriptorPool = m_descriptorPool;
-	allocInfo.descriptorSetCount = static_cast<uint32_t>(m_maxFramesInFlight);
-	allocInfo.pSetLayouts = layouts.data();
+	allocInfo.descriptorSetCount = 1;
+	allocInfo.pSetLayouts = &m_descriptorSetLayout;
 
-	if (vkAllocateDescriptorSets(m_context.getDevice(), &allocInfo, m_descriptorSets.data()) != VK_SUCCESS)
+	if (vkAllocateDescriptorSets(m_context.getDevice(), &allocInfo, &m_descriptorSet) != VK_SUCCESS)
 	{
-		throw std::runtime_error("Failed to allocate descriptor sets");
+		throw std::runtime_error("Failed to allocate descriptor set!");
 	}
-	std::cout << "Descriptor Sets Allocated successfully" << std::endl;
-	nameObjects(m_context.getDevice(), m_descriptorSets, "DescriptorSet_Frame");
+	std::cout << "Descriptor Set Allocated successfully" << std::endl;
+	nameObject(m_context.getDevice(), m_descriptorSet, "DescriptorSet");
 
-	for (size_t i = 0; i < m_maxFramesInFlight; ++i)
-	{
-		VkDescriptorBufferInfo bufferInfo{};
-		bufferInfo.buffer = m_buffer.getUniformBuffer(i);
-		bufferInfo.offset = 0;
-		bufferInfo.range = uniformBufferSize;
+	// Initialize SSBO + texture descriptor (persistent)
 
-		VkDescriptorImageInfo imageInfo{};
-		imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		imageInfo.imageView = m_image.getImageView();
-		imageInfo.sampler = m_image.getSampler();
+	VkDescriptorBufferInfo ssboInfo{};
+	ssboInfo.buffer = m_buffer.getObjectBuffer();
+	ssboInfo.offset = 0;
+	ssboInfo.range = m_buffer.getObjectBufferSize();
 
-		std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+	VkDescriptorImageInfo imageInfo{};
+	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	imageInfo.imageView = m_image.getImageView();
+	imageInfo.sampler = m_image.getSampler();
 
-		descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrites[0].dstSet = m_descriptorSets[i];
-		descriptorWrites[0].dstBinding = 0;
-		descriptorWrites[0].dstArrayElement = 0;
-		descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		descriptorWrites[0].descriptorCount = 1;
-		descriptorWrites[0].pBufferInfo = &bufferInfo;
+	std::array<VkWriteDescriptorSet, 2> persistentWrites{};
 
-		descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrites[1].dstSet = m_descriptorSets[i];
-		descriptorWrites[1].dstBinding = 1;
-		descriptorWrites[1].dstArrayElement = 0;
-		descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		descriptorWrites[1].descriptorCount = 1;
-		descriptorWrites[1].pImageInfo = &imageInfo;
+	// SSBO binding
+	persistentWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	persistentWrites[0].dstSet = m_descriptorSet;
+	persistentWrites[0].dstBinding = 1;
+	persistentWrites[0].descriptorCount = 1;
+	persistentWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	persistentWrites[0].pBufferInfo = &ssboInfo;
 
-		vkUpdateDescriptorSets(m_context.getDevice(), static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
-	}
+	// Texture binding
+	persistentWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	persistentWrites[1].dstSet = m_descriptorSet;
+	persistentWrites[1].dstBinding = 2;
+	persistentWrites[1].descriptorCount = 1;
+	persistentWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	persistentWrites[1].pImageInfo = &imageInfo;
+
+	vkUpdateDescriptorSets(m_context.getDevice(), static_cast<uint32_t>(persistentWrites.size()), persistentWrites.data(), 0, nullptr);
+	
+}
+
+
+void DescriptorManager::updateUBOdescriptor(size_t currentFrame, VkDeviceSize uniformBufferSize)
+{
+	VkDescriptorBufferInfo uboInfo{};
+	uboInfo.buffer = m_buffer.getUniformBuffer(currentFrame);
+	uboInfo.offset = 0;
+	uboInfo.range = uniformBufferSize;
+
+	VkWriteDescriptorSet uboWrite{};
+	uboWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	uboWrite.dstSet = m_descriptorSet;
+	uboWrite.dstBinding = 0;
+	uboWrite.dstArrayElement = 0;
+	uboWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	uboWrite.descriptorCount = 1;
+	uboWrite.pBufferInfo = &uboInfo;
+
+	vkUpdateDescriptorSets(m_context.getDevice(), 1, &uboWrite, 0, nullptr);
 }

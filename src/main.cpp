@@ -28,10 +28,17 @@
 #include "ImGuiOverlay.hpp" // User Interface
 #include "Camera.hpp" // Camera
 
+// Per-object data
+struct ObjectData
+{
+	glm::mat4 model{};
+};
+size_t maxObjects = 3;
+std::vector<ObjectData> objectData(maxObjects);
+
 // MVP Matrix
 struct UniformBufferObject 
 {
-	glm::mat4 model{};
 	glm::mat4 view{};
 	glm::mat4 proj{};
 } UBO;
@@ -91,11 +98,26 @@ int main()
 	VulkanContext context(window);
 	Swapchain swapchain(window, context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
-	GPUBuffer buffer(context, commands, vertices, indices, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
+	GPUBuffer buffer(context, commands, vertices, indices, MAX_FRAMES_IN_FLIGHT, sizeof(UBO), sizeof(ObjectData));
+
+	// Create object data SSBO, create model matrices and upload to GPU
+	buffer.createObjectBuffer(maxObjects);
+	for (size_t i = 0; i < 3; ++i) {
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(i * 2.0f, 0.0f, 0.0f)); // offset along X
+		model = glm::rotate(model, glm::radians(45.0f * i), glm::vec3(0.0f, 1.0f, 0.0f)); // different rotation
+		objectData[i].model = model;
+	}
+	// Upload all matrices to the GPU
+	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData));
+
 	GPUImage image(context, commands, TEXTURE_PATH, swapchain.getExtent());
+
+	// Create depth and MSAA render targets
 	image.createDepthImage(swapchain.getExtent().width, swapchain.getExtent().height);
 	image.createMSAAColorImage(swapchain.getExtent().width, swapchain.getExtent().height, swapchain.getFormat());
-	DescriptorManager descriptors(context, buffer, image, MAX_FRAMES_IN_FLIGHT, sizeof(UBO));
+
+	DescriptorManager descriptors(context, buffer, image);
 	Pipeline pipeline(context, swapchain, descriptors, "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat());
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
 
@@ -151,6 +173,8 @@ int main()
 		VkCommandBufferBeginInfo beginInfo{};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		updateUniformBuffer(currentFrame, buffer);
 
 		vkBeginCommandBuffer(cmd, &beginInfo);
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &cmdLabel);
@@ -246,10 +270,12 @@ int main()
 		vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
 		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
-		VkDescriptorSet currDescriptorSet = descriptors.getDescriptorSet(currentFrame);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getLayout(), 0, 1, &currDescriptorSet, 0, nullptr);
+		// Update UBO binding for this frame
+		descriptors.updateUBOdescriptor(currentFrame, sizeof(UniformBufferObject));
+		VkDescriptorSet set = descriptors.getDescriptorSet();
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getLayout(), 0, 1, &set, 0, nullptr);
 
-		vkCmdDrawIndexed(cmd, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+		vkCmdDrawIndexed(cmd, static_cast<uint32_t>(indices.size()), 3, 0, 0, 0);
 
 		// End dynamic rendering
 		vkCmdEndRendering(cmd);
@@ -304,8 +330,6 @@ int main()
 
 		vkCmdEndDebugUtilsLabelEXT(cmd);
 		vkEndCommandBuffer(cmd);
-
-		updateUniformBuffer(currentFrame, buffer);
 
 		// Submit
 		VkSubmitInfo2 submitInfo{};
@@ -377,15 +401,6 @@ int main()
 
 void updateUniformBuffer(uint32_t currentFrame, GPUBuffer& buffer)
 {
-	glm::mat4 model = glm::mat4(1.0f);
-
-	model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
-	model = glm::rotate(model, glm::radians(270.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-	model = glm::rotate(model, glm::radians(270.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));
-
-	UBO.model = model;
-
 	// Use camera view matrix instead of hardcoding
 	UBO.view = camera.GetViewMatrix();
 	UBO.proj = glm::perspective(glm::radians(camera.Zoom), 

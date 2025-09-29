@@ -7,9 +7,9 @@
 #include <stdexcept>
 #include <iostream>
 
-GPUBuffer::GPUBuffer(VulkanContext& context, Commands& commands, const std::vector<Vertex>& vertices, const std::vector<uint32_t> indices, uint32_t maxFramesInFlight, VkDeviceSize uniformBufferSize)
+GPUBuffer::GPUBuffer(VulkanContext& context, Commands& commands, const std::vector<Vertex>& vertices, const std::vector<uint32_t> indices, uint32_t maxFramesInFlight, VkDeviceSize uniformBufferSize, VkDeviceSize objectBufferSize)
 	: m_context(context), m_commands(commands), m_maxFramesInFlight(maxFramesInFlight), 
-	  m_uniformBuffers(maxFramesInFlight), m_uniformAllocations(maxFramesInFlight), m_uniformBuffersMapped(maxFramesInFlight)
+	  m_uniformBuffers(maxFramesInFlight), m_uniformAllocations(maxFramesInFlight), m_uniformBuffersMapped(maxFramesInFlight), m_objectBufferSize(objectBufferSize)
 {
 	createVertexBuffer(vertices);
 	createIndexBuffer(indices);
@@ -25,6 +25,8 @@ GPUBuffer::~GPUBuffer()
 	{
 		vmaDestroyBuffer(m_context.getAllocator(), m_uniformBuffers[i], m_uniformAllocations[i]);
 	}
+
+	vmaDestroyBuffer(m_context.getAllocator(), m_objectBuffer, m_objectAllocation);
 }
 
 void GPUBuffer::updateUniformBuffer(size_t frameIndex, const void* data, size_t size)
@@ -36,6 +38,15 @@ void GPUBuffer::updateUniformBuffer(size_t frameIndex, const void* data, size_t 
 
 	// Since we're using persistent mapping, just copy directly
 	memcpy(m_uniformBuffersMapped[frameIndex], data, size);
+}
+
+void GPUBuffer::updateObjectBuffer(const void* data, size_t size)
+{
+	if (size > m_objectBufferSize)
+	{
+		throw std::runtime_error("Object buffer overflow!");
+	}
+	memcpy(m_objectBufferMapped, data, size);
 }
 
 void GPUBuffer::createVertexBuffer(const std::vector<Vertex>& vertices)
@@ -155,6 +166,34 @@ void GPUBuffer::createUniformBuffers(VkDeviceSize bufferSize)
 		m_uniformBuffersMapped[i] = allocInfoDetails.pMappedData;
 	}
 	nameObjects(m_context.getDevice(), m_uniformBuffers, "UniformBuffers_Frame");
+}
+
+void GPUBuffer::createObjectBuffer(size_t maxObjects)
+{
+	m_objectBufferSize *= maxObjects;
+
+	VkBufferCreateInfo bufferInfo{};
+	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferInfo.size = m_objectBufferSize;
+	bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	VmaAllocationCreateInfo allocInfo{};
+	allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+	allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+	if (vmaCreateBuffer(m_context.getAllocator(), &bufferInfo, &allocInfo, &m_objectBuffer, &m_objectAllocation, nullptr) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create object SSBO");
+	}
+	std::cout << "Object SSBO created successfully (" << maxObjects << " objects)" << std::endl;
+
+	// Get mapped pointer
+	VmaAllocationInfo allocInfoDetails{};
+	vmaGetAllocationInfo(m_context.getAllocator(), m_objectAllocation, &allocInfoDetails);
+	m_objectBufferMapped = allocInfoDetails.pMappedData;
+
+	nameObject(m_context.getDevice(), m_objectBuffer, "ObjectBuffer_SSBO");
 }
 
 void GPUBuffer::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
