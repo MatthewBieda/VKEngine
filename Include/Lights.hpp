@@ -14,10 +14,3 @@ struct PointLight
 	float radius;
 	float padding[3];
 };
-
-struct LigthingData
-{
-	DirectionalLight dirLight;
-	int numPointLights;
-	PointLight pointsLights[16];
-};

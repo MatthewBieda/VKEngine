@@ -26,7 +26,8 @@
 #include "Vertex.hpp" // Vertex definiton
 #include "Utils.hpp" // Helper functions
 #include "ImGuiOverlay.hpp" // User Interface
-#include "Camera.hpp" // Camera
+#include "Camera.hpp" // Free camera
+#include "Lights.hpp" // Light types
 
 // Per-object data
 struct ObjectData
@@ -61,6 +62,13 @@ Camera camera;
 bool cursorEnabled = false;
 bool spacePressedLastFrame = false;
 bool firstMouse = true;
+
+struct LightingData
+{
+	DirectionalLight dirLight;
+	int numPointLights;
+	PointLight pointsLights[16];
+} lights;
 
 void loadModel();
 void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image);
@@ -122,6 +130,12 @@ int main()
 
 	// Upload all matrices to the GPU
 	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData));
+
+	// Create lighting buffer and upload data
+	buffer.createLightingBuffer(sizeof(LightingData));
+	lights.dirLight.direction = glm::vec4(-1.0f, -1.0f, -1.0f, 0.0f);
+	lights.dirLight.color = glm::vec4(1.0f);
+	buffer.updateLightingBuffer(&lights, sizeof(LightingData));
 
 	GPUImage image(context, commands, TEXTURE_PATH, swapchain.getExtent());
 
