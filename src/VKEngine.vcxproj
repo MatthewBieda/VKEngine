@@ -169,6 +169,7 @@
     <ClInclude Include="..\Include\GPUBuffer.hpp" />
     <ClInclude Include="..\Include\GPUImage.hpp" />
     <ClInclude Include="..\Include\ImGuiOverlay.hpp" />
+    <ClInclude Include="..\Include\Lights.hpp" />
     <ClInclude Include="..\Include\Pipeline.hpp" />
     <ClInclude Include="..\Include\Swapchain.hpp" />
     <ClInclude Include="..\Include\Sync.hpp" />
