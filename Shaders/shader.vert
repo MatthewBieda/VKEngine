@@ -18,15 +18,16 @@ layout(push_constant) uniform PushConstants
 {
 	mat4 view;
 	mat4 proj;
+	vec3 cameraPos;
 } pushConstants;
 
 void main() {
 	mat4 modelMat = objectData.model[gl_InstanceIndex];
 	vec4 worldPos = modelMat * vec4(inPosition, 1.0);
 
-	gl_Position = pushConstants.proj * pushConstants.view * modelMat * vec4(inPosition, 1.0);
 	fragTexCoord = inTexCoord;
-
 	fragPos = worldPos.xyz;
 	fragNormal = mat3(transpose(inverse(modelMat))) * inNormal;
+
+	gl_Position = pushConstants.proj * pushConstants.view * worldPos;
 }

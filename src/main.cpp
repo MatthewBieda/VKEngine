@@ -42,6 +42,8 @@ struct CameraData
 {
 	glm::mat4 view{};
 	glm::mat4 proj{};
+	glm::vec3 cameraPos;
+	float padding;
 } cameraData;
 
 struct AppState 
@@ -347,8 +349,9 @@ int main()
 			0.1f, 50.0f);
 		// Flip Y scaling factor for Vulkan compatibility with GLM
 		cameraData.proj[1][1] *= -1;
+		cameraData.cameraPos = camera.Position;
 
-		vkCmdPushConstants(cmd, pipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(cameraData), &cameraData);
+		vkCmdPushConstants(cmd, pipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(cameraData), &cameraData);
 
 		vkCmdDrawIndexed(cmd, static_cast<uint32_t>(indices.size()), maxObjects, 0, 0, 0);
 
