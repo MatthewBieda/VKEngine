@@ -23,6 +23,9 @@ layout(std430, set = 0, binding = 2) readonly buffer Lighting
 {
     DirectionalLight dirLight;
     int numPointLights;
+    int padding0;
+    int padding1;
+    int padding2;
     PointLight pointLights[16];
 } lighting;
 
@@ -38,11 +41,28 @@ void main() {
 	//outColor = vec4(normalize(fragNormal) * 0.5 + 0.5, 1.0);
 
     vec3 N = normalize(fragNormal);
-    vec3 L = normalize(-lighting.dirLight.direction.xyz); 
-    float diff = max(dot(N, L), 0.0);
-
     vec3 albedo = texture(tex, fragTexCoord).rgb;
+
+    // Directional light
+    vec3 Ldir = normalize(-lighting.dirLight.direction.xyz); 
+    float diff = max(dot(N, Ldir), 0.0);
     vec3 diffuse = diff * albedo * lighting.dirLight.color.rgb;
+
+    // Point lights
+    for (int i = 0; i < lighting.numPointLights; ++i)
+    {
+        vec3 lightPos = lighting.pointLights[i].position.xyz;
+        vec3 Lpoint = lightPos - fragPos;
+        float distance = length(Lpoint);
+        Lpoint = normalize(Lpoint);
+
+        float attenuation = 1.0 / (distance * distance);
+
+        // Lambertian diffuse
+        float diffPoint = max(dot(N, Lpoint), 0.0);
+
+        diffuse += diffPoint * albedo * lighting.pointLights[i].color.rgb * attenuation;
+    };
 
     outColor = vec4(diffuse, 1.0);
 }

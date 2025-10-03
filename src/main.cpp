@@ -34,7 +34,7 @@ struct ObjectData
 {
 	glm::mat4 model{};
 };
-uint32_t maxObjects = 100;
+uint32_t maxObjects = 16;
 std::vector<ObjectData> objectData(maxObjects);
 
 // MVP Matrix
@@ -67,7 +67,7 @@ struct LightingData
 {
 	DirectionalLight dirLight;
 	int numPointLights;
-	PointLight pointsLights[16];
+	alignas(16) PointLight pointsLights[16];
 } lights;
 
 void loadModel();
@@ -110,21 +110,29 @@ int main()
 	// Create object data SSBO
 	buffer.createObjectBuffer(maxObjects);
 
-	// Create grid of models
-	const int gridSizeX = 10;
-	const int gridSizeY = 10;
-	const float spacing = 2.0f; // distance between objects
+	const int gridSizeX = 4;
+	const int gridSizeY = 4;
+	const float spacing = 2.0f;
+
+	const float halfWidth = (gridSizeX - 1) * spacing * 0.5f;
+	const float halfHeight = (gridSizeY - 1) * spacing * 0.5f;
 
 	size_t objIndex = 0;
 	for (int y = 0; y < gridSizeY; ++y) {
 		for (int x = 0; x < gridSizeX; ++x) {
+			// "World-space" position centered at origin
+			glm::vec3 pos(
+				x * spacing - halfWidth,
+				0.0f,
+				y * spacing - halfHeight
+			);
+
 			glm::mat4 model = glm::mat4(1.0f);
-			model = glm::translate(model, glm::vec3(x * spacing, 0.0f, y * spacing));
+			model = glm::translate(model, pos);
 			model = glm::rotate(model, glm::radians(270.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 			model = glm::rotate(model, glm::radians(270.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
-			objectData[objIndex].model = model;
-			++objIndex;
+			objectData[objIndex++].model = model;
 		}
 	}
 
@@ -133,8 +141,20 @@ int main()
 
 	// Create lighting buffer and upload data
 	buffer.createLightingBuffer(sizeof(LightingData));
+
+	// Directional light
 	lights.dirLight.direction = glm::vec4(-1.0f, -1.0f, -1.0f, 0.0f);
 	lights.dirLight.color = glm::vec4(1.0f);
+
+	// Point lights
+	lights.pointsLights[0].position = glm::vec4(0.0f, 2.0f, 0.0f, 1.0f);
+	lights.pointsLights[0].color = glm::vec4(5.0f, 0.0f, 0.0f, 1.0f);
+	lights.pointsLights[0].radius = 5.0f;
+
+	lights.pointsLights[1].position = glm::vec4(0.0f, 2.0f, 0.0f, 1.0f);
+	lights.pointsLights[1].color = glm::vec4(0.0f, 5.0f, 0.0f, 1.0f);
+	lights.pointsLights[1].radius = 5.0f;
+	lights.numPointLights = 2;
 	buffer.updateLightingBuffer(&lights, sizeof(LightingData));
 
 	GPUImage image(context, commands, TEXTURE_PATH, swapchain.getExtent());
@@ -170,6 +190,30 @@ int main()
 
 		imgui.newFrame();
 		imgui.drawUI();
+
+		// Update Lighting data
+		static float t = 0.0f;
+		t += deltaTime;
+
+		// Light 1: Large circle, clockwise
+		float radius1 = 3.0f;
+		lights.pointsLights[0].position = glm::vec4(
+			radius1 * cos(t),
+			2.0f,
+			radius1 * sin(t),
+			1.0f
+		);
+
+		// Light 2: Smaller circle, counterclockwise
+		float radius2 = 1.0f;
+		lights.pointsLights[1].position = glm::vec4(
+			radius2 * cos(-t * 1.2f),
+			2.0f,
+			radius2 * sin(-t * 1.2f),
+			1.0f
+		);
+
+		buffer.updateLightingBuffer(&lights, sizeof(LightingData));
 
 		// Wait for previous frame to finish
 		vkWaitForFences(context.getDevice(), 1, sync.getInFlightFencePtr(currentFrame), VK_TRUE, UINT64_MAX);
