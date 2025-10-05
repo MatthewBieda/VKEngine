@@ -170,6 +170,11 @@ void ImGuiOverlay::drawUI()
 	ImGui::Checkbox("Enable Wireframe", &enableWireframe);
 	ImGui::Checkbox("Enable backface culling", &enableBackfaceCulling);
 
+	ImGui::Separator();
+	ImGui::Text("Lighting");
+	ImGui::Checkbox("Enable Directional Light", &enableDirectionalLight);
+	ImGui::Checkbox("Enable Point Lights", &enablePointLights);
+
 	ImGui::End();
 	
 	if (showMetrics)

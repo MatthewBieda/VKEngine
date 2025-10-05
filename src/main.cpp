@@ -43,7 +43,8 @@ struct CameraData
 	glm::mat4 view{};
 	glm::mat4 proj{};
 	glm::vec3 cameraPos;
-	float padding;
+	uint32_t enableDirectionalLight;
+	uint32_t enablePointLights;
 } cameraData;
 
 struct AppState 
@@ -350,6 +351,8 @@ int main()
 		// Flip Y scaling factor for Vulkan compatibility with GLM
 		cameraData.proj[1][1] *= -1;
 		cameraData.cameraPos = camera.Position;
+		cameraData.enableDirectionalLight = imgui.enableDirectionalLight ? 1 : 0;
+		cameraData.enablePointLights = imgui.enablePointLights ? 1 : 0;
 
 		vkCmdPushConstants(cmd, pipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(cameraData), &cameraData);
 

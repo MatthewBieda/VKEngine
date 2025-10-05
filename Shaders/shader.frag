@@ -5,6 +5,8 @@ layout(push_constant) uniform PushConstants
     mat4 view;
     mat4 proj;
     vec3 cameraPos;
+    int enableDirectionalLight;
+    int enablePointLights;
 } pc;
 
 layout(set = 0, binding = 1) uniform sampler2D tex;
@@ -60,35 +62,41 @@ void main() {
     vec3 specular = vec3(0.0);
 
     // Directional light
-    vec3 Ldir = normalize(-lighting.dirLight.direction.xyz); 
-    vec3 H = normalize(Ldir + V);
+    if (pc.enableDirectionalLight != 0) 
+    {
+        vec3 Ldir = normalize(-lighting.dirLight.direction.xyz); 
+        vec3 H = normalize(Ldir + V);
 
-    float diff = max(dot(N, Ldir), 0.0);
-    diffuse += diff * albedo * lighting.dirLight.color.rgb;
+        float diff = max(dot(N, Ldir), 0.0);
+        diffuse += diff * albedo * lighting.dirLight.color.rgb;
 
-    float specAmount = pow(max(dot(N, H), 0.0), shininess);
-    specular += specAmount * specularStrength * lighting.dirLight.color.rgb;
+        float specAmount = pow(max(dot(N, H), 0.0), shininess);
+        specular += specAmount * specularStrength * lighting.dirLight.color.rgb;
+    }
 
     // Point lights
-    for (int i = 0; i < lighting.numPointLights; ++i)
+    if (pc.enablePointLights != 0)
     {
-        vec3 lightPos = lighting.pointLights[i].position.xyz;
-        vec3 Lpoint = lightPos - fragPos;
-        float distance = length(Lpoint);
-        Lpoint = normalize(Lpoint);
+        for (int i = 0; i < lighting.numPointLights; ++i)
+        {
+            vec3 lightPos = lighting.pointLights[i].position.xyz;
+            vec3 Lpoint = lightPos - fragPos;
+            float distance = length(Lpoint);
+            Lpoint = normalize(Lpoint);
 
-        float attenuation = 1.0 / (distance * distance);
+            float attenuation = 1.0 / (distance * distance);
 
-        vec3 Hpoint = normalize(Lpoint + V);
+            vec3 Hpoint = normalize(Lpoint + V);
 
-        // Diffuse
-        float diffPoint = max(dot(N, Lpoint), 0.0);
-        diffuse += diffPoint * albedo * lighting.pointLights[i].color.rgb * attenuation;
+            // Diffuse
+            float diffPoint = max(dot(N, Lpoint), 0.0);
+            diffuse += diffPoint * albedo * lighting.pointLights[i].color.rgb * attenuation;
 
-        // Specular
-        float specPoint = pow(max(dot(N, Hpoint), 0.0), shininess);
-        specular += specPoint * specularStrength * lighting.pointLights[i].color.rgb * attenuation;
-    };
+            // Specular
+            float specPoint = pow(max(dot(N, Hpoint), 0.0), shininess);
+            specular += specPoint * specularStrength * lighting.pointLights[i].color.rgb * attenuation;
+        };
+    }
 
     vec3 finalColor = ambient + diffuse + specular;
     outColor = vec4(finalColor, 1.0);
