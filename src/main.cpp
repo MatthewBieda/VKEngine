@@ -19,8 +19,8 @@
 #include "Swapchain.hpp" // Swapchain, image views
 #include "Commands.hpp" // Command pool & Command buffers
 #include "GPUBuffer.hpp" // Vertex, index, uniform, storage buffers
-#include "GPUImage.hpp" // TextureImage, DepthImage, MSAAImage
-#include "DescriptorManager.hpp" // Classic API for now (Pools/Sets)
+#include "GPUImage.hpp" // TextureImage, DepthImage, MSAAImage, Skybox?
+#include "DescriptorManager.hpp" // Bindless descriptors
 #include "Pipeline.hpp" // Shaders, pipeline layout, pipeline
 #include "Sync.hpp" // Semaphores & Fences
 #include "Vertex.hpp" // Vertex definiton
@@ -29,42 +29,14 @@
 #include "Camera.hpp" // Free camera
 #include "Lights.hpp" // Light types
 
-// Per-object data
-struct ObjectData
-{
-	glm::mat4 model{};
-};
-uint32_t maxObjects = 16;
-std::vector<ObjectData> objectData(maxObjects);
-
-// MVP Matrix
-struct CameraData
+struct PushConstants
 {
 	glm::mat4 view{};
 	glm::mat4 proj{};
 	glm::vec3 cameraPos;
 	uint32_t enableDirectionalLight;
 	uint32_t enablePointLights;
-} cameraData;
-
-struct AppState 
-{
-	uint32_t windowWidth = 1920;
-	uint32_t windowHeight = 1080;
-	bool framebufferResized = false;
-} appState;
-
-const std::string MODEL_PATH = "../Models/viking_room.obj";
-const std::string TEXTURE_PATH = "../Textures/viking_room.png";
-
-std::vector<Vertex> vertices{};
-std::vector<uint32_t> indices{};
-
-// Create camera
-Camera camera;
-bool cursorEnabled = false;
-bool spacePressedLastFrame = false;
-bool firstMouse = true;
+} pc;
 
 struct LightingData
 {
@@ -73,96 +45,60 @@ struct LightingData
 	alignas(16) PointLight pointsLights[16];
 } lights;
 
-void loadModel();
-void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image);
+struct ObjectData
+{
+	glm::mat4 model{};
+};
+uint32_t maxObjects = 16;
+std::vector<ObjectData> objectData(maxObjects);
 
+struct AppState 
+{
+	uint32_t windowWidth = 1920;
+	uint32_t windowHeight = 1080;
+	bool framebufferResized = false;
+	bool cursorEnabled = false;
+	bool spacePressedLastFrame = false;
+	bool firstMouse = true;
+} appState;
+
+Camera camera;
+
+const std::string TEXTURE_PATH = "../Textures/viking_room.png";
+
+std::vector<Vertex> vertices{};
+std::vector<uint32_t> indices{};
+
+GLFWwindow* createWindow(AppState& appState);
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
 void mouseCallback(GLFWwindow* window, double xpos, double ypos);
 void processInput(GLFWwindow* window, float deltaTime);
 
-// Only init + run loop
+void loadModel(const std::string& modelPath);
+void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData);
+void setupLighting(GPUBuffer& buffer, LightingData& lights);
+void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image);
+
 int main()
 {
 	static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 	uint32_t currentFrame = 0;
 
-	if (!glfwInit())
-	{
-		std::cerr << "Failed to initailize GLFW!" << std::endl;
-		return -1;
-	}
-	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
-	GLFWwindow* window = glfwCreateWindow(appState.windowWidth, appState.windowHeight, "VKEngine", nullptr, nullptr);
-	glfwSetScrollCallback(window, scrollCallback);
-	glfwSetCursorPosCallback(window, mouseCallback);
-	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	loadModel("../Models/viking_room.obj");
 
-	// Set the app state as user pointer so callback can access it
-	glfwSetWindowUserPointer(window, &appState);
-	glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
-
-	loadModel();
-
+	GLFWwindow* window = createWindow(appState);
 	VulkanContext context(window);
 	Swapchain swapchain(window, context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
+
 	GPUBuffer buffer(context, commands, vertices, indices, sizeof(ObjectData));
-
-	// Create object data SSBO
 	buffer.createObjectBuffer(maxObjects);
-
-	const int gridSizeX = 4;
-	const int gridSizeY = 4;
-	const float spacing = 2.0f;
-
-	const float halfWidth = (gridSizeX - 1) * spacing * 0.5f;
-	const float halfHeight = (gridSizeY - 1) * spacing * 0.5f;
-
-	size_t objIndex = 0;
-	for (int y = 0; y < gridSizeY; ++y) {
-		for (int x = 0; x < gridSizeX; ++x) {
-			// "World-space" position centered at origin
-			glm::vec3 pos(
-				x * spacing - halfWidth,
-				0.0f,
-				y * spacing - halfHeight
-			);
-
-			glm::mat4 model = glm::mat4(1.0f);
-			model = glm::translate(model, pos);
-			model = glm::rotate(model, glm::radians(270.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-			model = glm::rotate(model, glm::radians(270.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-
-			objectData[objIndex++].model = model;
-		}
-	}
-
-	// Upload all matrices to the GPU
-	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData));
-
-	// Create lighting buffer and upload data
+	setupSceneObjects(buffer, objectData);
 	buffer.createLightingBuffer(sizeof(LightingData));
-
-	// Directional light
-	lights.dirLight.direction = glm::vec4(-1.0f, -1.0f, -1.0f, 0.0f);
-	lights.dirLight.color = glm::vec4(1.0f);
-
-	// Point lights
-	lights.pointsLights[0].position = glm::vec4(0.0f, 2.0f, 0.0f, 1.0f);
-	lights.pointsLights[0].color = glm::vec4(5.0f, 0.0f, 0.0f, 1.0f);
-	lights.pointsLights[0].radius = 5.0f;
-
-	lights.pointsLights[1].position = glm::vec4(0.0f, 2.0f, 0.0f, 1.0f);
-	lights.pointsLights[1].color = glm::vec4(0.0f, 5.0f, 0.0f, 1.0f);
-	lights.pointsLights[1].radius = 5.0f;
-	lights.numPointLights = 2;
-	buffer.updateLightingBuffer(&lights, sizeof(LightingData));
+	setupLighting(buffer, lights);
 
 	GPUImage image(context, commands, TEXTURE_PATH, swapchain.getExtent());
-
-	// Create depth and MSAA render targets
 	image.createDepthImage(swapchain.getExtent().width, swapchain.getExtent().height);
 	image.createMSAAColorImage(swapchain.getExtent().width, swapchain.getExtent().height, swapchain.getFormat());
 
@@ -170,19 +106,122 @@ int main()
 	Pipeline pipeline(context, swapchain, descriptors, "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat());
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
 
-	std::cout << "Loaded " << vertices.size() << " vertices and " << indices.size() << " indices.\n";
-
-	// Initialize ImGui using existing resources
 	ImGuiOverlay imgui;
 	imgui.init(window, context, descriptors, swapchain.getFormat(), swapchain.getImageCount(), image.getMSAASamples());
 
-	// Create label
 	VkDebugUtilsLabelEXT cmdLabel = makeLabel("Command List: ", 0.2f, 0.2f, 0.8f);
 
+	// Pre-render loop struct initialization
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	VkRenderingAttachmentInfo colorAttachment{};
+	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT; // Enable resolve
+	colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // For presentation
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+	VkRenderingAttachmentInfo depthAttachment{};
+	depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+
+	VkRenderingInfo renderingInfo{};
+	renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	renderingInfo.layerCount = 1;
+	renderingInfo.colorAttachmentCount = 1;
+	renderingInfo.pColorAttachments = &colorAttachment;
+	renderingInfo.pDepthAttachment = &depthAttachment;
+
+	VkRenderingAttachmentInfo imguiColorAttachment{};
+	imguiColorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	imguiColorAttachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+	imguiColorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	imguiColorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+	VkRenderingInfo imguiRenderingInfo{};
+	imguiRenderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	imguiRenderingInfo.layerCount = 1;
+	imguiRenderingInfo.colorAttachmentCount = 1;
+	imguiRenderingInfo.pColorAttachments = &imguiColorAttachment;
+
+	VkImageMemoryBarrier2 preRenderBarrier{};
+	preRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+	preRenderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+	preRenderBarrier.srcAccessMask = VK_ACCESS_2_NONE;
+	preRenderBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+	preRenderBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+	preRenderBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	preRenderBarrier.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+	preRenderBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	preRenderBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	preRenderBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	preRenderBarrier.subresourceRange.baseMipLevel = 0;
+	preRenderBarrier.subresourceRange.levelCount = 1;
+	preRenderBarrier.subresourceRange.baseArrayLayer = 0;
+	preRenderBarrier.subresourceRange.layerCount = 1;
+
+	VkDependencyInfo preDepInfo{};
+	preDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	preDepInfo.imageMemoryBarrierCount = 1;
+	preDepInfo.pImageMemoryBarriers = &preRenderBarrier;
+
+	VkImageMemoryBarrier2 postRenderBarrier{};
+	postRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+	postRenderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+	postRenderBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+	postRenderBarrier.dstStageMask = VK_PIPELINE_STAGE_2_NONE;
+	postRenderBarrier.dstAccessMask = VK_ACCESS_2_NONE;
+	postRenderBarrier.oldLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+	postRenderBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	postRenderBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	postRenderBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	postRenderBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	postRenderBarrier.subresourceRange.baseMipLevel = 0;
+	postRenderBarrier.subresourceRange.levelCount = 1;
+	postRenderBarrier.subresourceRange.baseArrayLayer = 0;
+	postRenderBarrier.subresourceRange.layerCount = 1;
+
+	VkDependencyInfo postDepInfo{};
+	postDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	postDepInfo.imageMemoryBarrierCount = 1;
+	postDepInfo.pImageMemoryBarriers = &postRenderBarrier;
+
+	VkSubmitInfo2 submitInfo{};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+	submitInfo.waitSemaphoreInfoCount = 1;
+	submitInfo.commandBufferInfoCount = 1;
+	submitInfo.signalSemaphoreInfoCount = 1;
+
+	VkSemaphoreSubmitInfo waitSemaphoreInfo{};
+	waitSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+	waitSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+	VkCommandBufferSubmitInfo cmdBufferInfo{};
+	cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+
+	VkSemaphoreSubmitInfo signalSemaphoreInfo{};
+	signalSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+	signalSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+
+	submitInfo.pWaitSemaphoreInfos = &waitSemaphoreInfo;
+	submitInfo.pCommandBufferInfos = &cmdBufferInfo;
+	submitInfo.pSignalSemaphoreInfos = &signalSemaphoreInfo;
+
+	VkPresentInfoKHR presentInfo{};
+	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentInfo.waitSemaphoreCount = 1;
+	presentInfo.swapchainCount = 1;
+
+	// Main Render Loop
 	double lastTime{};
 	while (!glfwWindowShouldClose(window))
 	{
-		// calculate delta time
+		// Delta time
 		double currentTime = glfwGetTime();
 		float deltaTime = static_cast<float>(currentTime - lastTime);
 		lastTime = currentTime;
@@ -243,73 +282,27 @@ int main()
 
 		// Record commands
 		VkCommandBuffer cmd = commands.getCommandBuffer(currentFrame);
-		VkCommandBufferBeginInfo beginInfo{};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
 		vkBeginCommandBuffer(cmd, &beginInfo);
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &cmdLabel);
 
-		// Transition swapchain image from UNDEFINED to ATTACHMENT_OPTIMAL
-		VkImageMemoryBarrier2 preRenderBarrier{};
-		preRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-		preRenderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-		preRenderBarrier.srcAccessMask = VK_ACCESS_2_NONE;
-		preRenderBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-		preRenderBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-		preRenderBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		preRenderBarrier.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-		preRenderBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		preRenderBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		// Transition swapchain to attachment
 		preRenderBarrier.image = swapchain.getSwapchainImage(imageIndex);
-		preRenderBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		preRenderBarrier.subresourceRange.baseMipLevel = 0;
-		preRenderBarrier.subresourceRange.levelCount = 1;
-		preRenderBarrier.subresourceRange.baseArrayLayer = 0;
-		preRenderBarrier.subresourceRange.layerCount = 1;
-
-		VkDependencyInfo preDepInfo{};
-		preDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-		preDepInfo.imageMemoryBarrierCount = 1;
-		preDepInfo.pImageMemoryBarriers = &preRenderBarrier;
-
 		vkCmdPipelineBarrier2(cmd, &preDepInfo);
 
 		// Color Attachment - Render to MSAA target, resolve to Swapchain
-		VkRenderingAttachmentInfo colorAttachment{};
-		colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 		colorAttachment.imageView = image.getMSAAColorImageView(); // Render to MSAA target
-		colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT; // Enable resolve
 		colorAttachment.resolveImageView = swapchain.getSwapchainImageView(imageIndex); // Resolve to swapchain
-		colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // For presentation
-		colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-
 		const glm::vec3& cc = imgui.clearColor;
 		colorAttachment.clearValue = { {cc.r, cc.g, cc.b, 1.0f} };
 
 		// Depth Attachment - MSAA depth buffer
-		VkRenderingAttachmentInfo depthAttachment{};
-		depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 		depthAttachment.imageView = image.getDepthImageView(); 
-		depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-		depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		VkClearValue depthClear{};
-		depthClear.depthStencil = { 1.0f, 0 }; // Clear depth to 1.0 (far plane)
-		depthAttachment.clearValue = depthClear;
+		depthAttachment.clearValue.depthStencil = { 1.0f, 0 };
 
-		VkRenderingInfo renderingInfo{};
-		renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
 		renderingInfo.renderArea.offset = { 0, 0 };
 		renderingInfo.renderArea.extent = swapchain.getExtent();
-		renderingInfo.layerCount = 1;
-		renderingInfo.colorAttachmentCount = 1;
-		renderingInfo.pColorAttachments = &colorAttachment;
-		renderingInfo.pDepthAttachment = &depthAttachment;
 
-		// Start dynamic rendering
+		// Main render pass
 		vkCmdBeginRendering(cmd, &renderingInfo);
 
 		// Declare dynamic states
@@ -344,109 +337,49 @@ int main()
 		VkDescriptorSet set = descriptors.getDescriptorSet();
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getLayout(), 0, 1, &set, 0, nullptr);
 
-		cameraData.view = camera.GetViewMatrix();
-		cameraData.proj = glm::perspective(glm::radians(camera.Zoom),
+		pc.view = camera.GetViewMatrix();
+		pc.proj = glm::perspective(glm::radians(camera.Zoom),
 			(float)appState.windowWidth / (float)appState.windowHeight,
 			0.1f, 50.0f);
 		// Flip Y scaling factor for Vulkan compatibility with GLM
-		cameraData.proj[1][1] *= -1;
-		cameraData.cameraPos = camera.Position;
-		cameraData.enableDirectionalLight = imgui.enableDirectionalLight ? 1 : 0;
-		cameraData.enablePointLights = imgui.enablePointLights ? 1 : 0;
+		pc.proj[1][1] *= -1;
+		pc.cameraPos = camera.Position;
+		pc.enableDirectionalLight = imgui.enableDirectionalLight ? 1 : 0;
+		pc.enablePointLights = imgui.enablePointLights ? 1 : 0;
 
-		vkCmdPushConstants(cmd, pipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(cameraData), &cameraData);
-
+		vkCmdPushConstants(cmd, pipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
 		vkCmdDrawIndexed(cmd, static_cast<uint32_t>(indices.size()), maxObjects, 0, 0, 0);
 
-		// End dynamic rendering
 		vkCmdEndRendering(cmd);
 
-		// Render ImGui on top of the resolved swapchain image
+		// ImGui pass
 		imgui.render();
 
-		// Imgui render pass(no depth, directly on swapchain)
-		VkRenderingAttachmentInfo imguiColorAttachment{};
-		imguiColorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 		imguiColorAttachment.imageView = swapchain.getSwapchainImageView(imageIndex);
-		imguiColorAttachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-		imguiColorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; 
-		imguiColorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-
-		VkRenderingInfo imguiRenderingInfo{};
-		imguiRenderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
 		imguiRenderingInfo.renderArea.offset = { 0, 0 };
 		imguiRenderingInfo.renderArea.extent = swapchain.getExtent();
-		imguiRenderingInfo.layerCount = 1;
-		imguiRenderingInfo.colorAttachmentCount = 1;
-		imguiRenderingInfo.pColorAttachments = &imguiColorAttachment;
 
 		vkCmdBeginRendering(cmd, &imguiRenderingInfo);
 		imgui.recordCommands(cmd);
 		vkCmdEndRendering(cmd);
 
-		// Transition swapchain image from ATTACHMENT_OPTIMAL to PRESENT_SRC_KHR
-		VkImageMemoryBarrier2 postRenderBarrier{};
-		postRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-		postRenderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-		postRenderBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-		postRenderBarrier.dstStageMask = VK_PIPELINE_STAGE_2_NONE;
-		postRenderBarrier.dstAccessMask = VK_ACCESS_2_NONE;
-		postRenderBarrier.oldLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-		postRenderBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-		postRenderBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		postRenderBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		// Transition to present
 		postRenderBarrier.image = swapchain.getSwapchainImage(imageIndex);
-		postRenderBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		postRenderBarrier.subresourceRange.baseMipLevel = 0;
-		postRenderBarrier.subresourceRange.levelCount = 1;
-		postRenderBarrier.subresourceRange.baseArrayLayer = 0;
-		postRenderBarrier.subresourceRange.layerCount = 1;
-
-		VkDependencyInfo postDepInfo{};
-		postDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-		postDepInfo.imageMemoryBarrierCount = 1;
-		postDepInfo.pImageMemoryBarriers = &postRenderBarrier;
-
 		vkCmdPipelineBarrier2(cmd, &postDepInfo);
 
 		vkCmdEndDebugUtilsLabelEXT(cmd);
 		vkEndCommandBuffer(cmd);
 
 		// Submit
-		VkSubmitInfo2 submitInfo{};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-
-		VkSemaphoreSubmitInfo waitSemaphoreInfo{};	
-		waitSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-		waitSemaphoreInfo.semaphore = sync.getImageAvailableSemaphore(currentFrame);
-		waitSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-
-		VkCommandBufferSubmitInfo cmdBufferInfo{};
-		cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
 		cmdBufferInfo.commandBuffer = cmd;
-
-		VkSemaphoreSubmitInfo signalSemaphoreInfo{};
-		signalSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+		waitSemaphoreInfo.semaphore = sync.getImageAvailableSemaphore(currentFrame);
 		signalSemaphoreInfo.semaphore = sync.getRenderFinishedSemaphore(imageIndex);
-		signalSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-
-		submitInfo.waitSemaphoreInfoCount = 1;
-		submitInfo.pWaitSemaphoreInfos = &waitSemaphoreInfo;
-		submitInfo.commandBufferInfoCount = 1;
-		submitInfo.pCommandBufferInfos = &cmdBufferInfo;
-		submitInfo.signalSemaphoreInfoCount = 1;
-		submitInfo.pSignalSemaphoreInfos = &signalSemaphoreInfo;
-
 		vkQueueSubmit2(context.getGraphicsQueue(), 1, &submitInfo, sync.getInFlightFence(currentFrame));
 
 		// Present
-		VkPresentInfoKHR presentInfo{};
-		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-		presentInfo.waitSemaphoreCount = 1;
 		VkSemaphore presentWaitSemaphores[] = { sync.getRenderFinishedSemaphore(imageIndex) };
 		presentInfo.pWaitSemaphores = presentWaitSemaphores;
 		VkSwapchainKHR swapChains[] = { swapchain.getSwapchain() };
-		presentInfo.swapchainCount = 1;
 		presentInfo.pSwapchains = swapChains;
 		presentInfo.pImageIndices = &imageIndex;
 		presentInfo.pResults = nullptr;
@@ -480,7 +413,7 @@ int main()
 	return 0;
 }
 
-void loadModel()
+void loadModel(const std::string& modelPath)
 {
 	tinyobj::attrib_t attrib;
 	std::vector<tinyobj::shape_t> shapes;
@@ -489,7 +422,7 @@ void loadModel()
 	std::string warn;
 	std::string err;
 
-	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())) 
+	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, modelPath.c_str())) 
 	{
 		throw std::runtime_error(err);
 	}
@@ -531,6 +464,55 @@ void loadModel()
 	}
 }
 
+void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
+{
+	const int gridSizeX = 4;
+	const int gridSizeY = 4;
+	const float spacing = 2.0f;
+
+	const float halfWidth = (gridSizeX - 1) * spacing * 0.5f;
+	const float halfHeight = (gridSizeY - 1) * spacing * 0.5f;
+
+	size_t objIndex = 0;
+	for (int y = 0; y < gridSizeY; ++y) {
+		for (int x = 0; x < gridSizeX; ++x) {
+			// "World-space" position centered at origin
+			glm::vec3 pos(
+				x * spacing - halfWidth,
+				0.0f,
+				y * spacing - halfHeight
+			);
+
+			glm::mat4 model = glm::mat4(1.0f);
+			model = glm::translate(model, pos);
+			model = glm::rotate(model, glm::radians(270.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+			model = glm::rotate(model, glm::radians(270.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+			objectData[objIndex++].model = model;
+		}
+	}
+
+	// Upload all matrices to the GPU
+	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData));
+}
+
+void setupLighting(GPUBuffer& buffer, LightingData& lights)
+{
+	lights.dirLight.direction = glm::vec4(-1.0f, -1.0f, -1.0f, 0.0f);
+	lights.dirLight.color = glm::vec4(1.0f);
+
+	lights.pointsLights[0].position = glm::vec4(0.0f, 2.0f, 0.0f, 1.0f);
+	lights.pointsLights[0].color = glm::vec4(5.0f, 0.0f, 0.0f, 1.0f);
+	lights.pointsLights[0].radius = 5.0f;
+
+	lights.pointsLights[1].position = glm::vec4(0.0f, 2.0f, 0.0f, 1.0f);
+	lights.pointsLights[1].color = glm::vec4(0.0f, 5.0f, 0.0f, 1.0f);
+	lights.pointsLights[1].radius = 5.0f;
+
+	lights.numPointLights = 2;
+	buffer.updateLightingBuffer(&lights, sizeof(LightingData));
+}
+
 void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image)
 {
 	swapchain.recreateSwapchain();
@@ -553,7 +535,7 @@ void scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
 
 void mouseCallback(GLFWwindow* window, double xpos, double ypos)
 {
-	if (cursorEnabled)
+	if (appState.cursorEnabled)
 	{
 		return;
 	}
@@ -561,11 +543,11 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos)
 	static double lastX = xpos;
 	static double lastY = ypos;
 
-	if (firstMouse)
+	if (appState.firstMouse)
 	{
 		lastX = xpos;
 		lastY = ypos;
-		firstMouse = false;
+		appState.firstMouse = false;
 	}
 
 	float xOffset = static_cast<float>(xpos - lastX);
@@ -577,7 +559,7 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos)
 	camera.ProcessMouseMovement(xOffset, yOffset);
 }
 
-void processInput(GLFWwindow* window, float deltaTime)
+void processInput(GLFWwindow* window, const float deltaTime)
 {
 	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
 	{
@@ -585,22 +567,22 @@ void processInput(GLFWwindow* window, float deltaTime)
 	}
 	
 	bool spacePressed = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
-	if (spacePressed && !spacePressedLastFrame)
+	if (spacePressed && !appState.spacePressedLastFrame)
 	{
-		cursorEnabled = !cursorEnabled;
-		if (cursorEnabled)
+		appState.cursorEnabled = !appState.cursorEnabled;
+		if (appState.cursorEnabled)
 		{
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 		}
 		else
 		{
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-			firstMouse = true;
+			appState.firstMouse = true;
 		}
 	}
-	spacePressedLastFrame = spacePressed;
+	appState.spacePressedLastFrame = spacePressed;
 
-	if (!cursorEnabled)
+	if (!appState.cursorEnabled )
 	{
 		if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
 			camera.ProcessKeyboard(CameraMovement::FORWARD, deltaTime);
@@ -611,4 +593,31 @@ void processInput(GLFWwindow* window, float deltaTime)
 		if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
 			camera.ProcessKeyboard(CameraMovement::RIGHT, deltaTime);
 	}
+}
+
+GLFWwindow* createWindow(AppState& appState)
+{
+	if (!glfwInit())
+	{
+		throw std::runtime_error("Failed to start GLFW!");
+	}
+
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+
+	GLFWwindow* window = glfwCreateWindow(
+		appState.windowWidth,
+		appState.windowHeight,
+		"VKEngine",
+		nullptr,
+		nullptr
+	);
+
+	glfwSetScrollCallback(window, scrollCallback);
+	glfwSetCursorPosCallback(window, mouseCallback);
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	glfwSetWindowUserPointer(window, &appState);
+	glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+
+	return window;
 }
