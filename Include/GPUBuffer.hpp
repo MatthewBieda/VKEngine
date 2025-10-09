@@ -13,7 +13,7 @@ class Commands;
 class GPUBuffer
 {
 public:
-	GPUBuffer(VulkanContext& context, Commands& commands, const std::vector<Vertex>& vertices, const std::vector<uint32_t> indices, VkDeviceSize objectBufferSize);
+	GPUBuffer(VulkanContext& context, Commands& commands, const std::vector<Vertex>& vertices, const std::vector<uint32_t> indices, VkDeviceSize objectBufferSize, uint32_t maxFramesInFlight);
 	~GPUBuffer();
 
 	VkBuffer getVertexBuffer() const { return m_vertexBuffer; }
@@ -26,10 +26,11 @@ public:
 
 	void createLightingBuffer(VkDeviceSize lightingBufferSize);
 	VkBuffer getLightingBuffer() const { return m_lightingBuffer; }
-	size_t getLightingBufferSize() const { return m_lightingBufferSize; }
+	VkDeviceSize getLightingBufferSize() const { return m_lightingBufferSize; }
+	VkDeviceSize getAlignedLightingSize() const { return m_alignedLightingSize; }
 
 	void updateObjectBuffer(const void* data, size_t size);
-	void updateLightingBuffer(const void* data, size_t size);
+	void updateLightingBuffer(const void* data, size_t size, uint32_t currentFrame);
 
 private:
 	VulkanContext& m_context;
@@ -45,13 +46,16 @@ private:
 	VkBuffer m_objectBuffer = VK_NULL_HANDLE;
 	VmaAllocation m_objectAllocation = VK_NULL_HANDLE;
 	void* m_objectBufferMapped = nullptr;
-	size_t m_objectBufferSize = 0;
+	VkDeviceSize m_objectBufferSize = 0;
 
 	// Lighting SSBO
 	VkBuffer m_lightingBuffer = VK_NULL_HANDLE;
 	VmaAllocation m_lightingAllocation = VK_NULL_HANDLE;
 	void* m_lightingBufferMapped = nullptr;
-	size_t m_lightingBufferSize = 0;
+	VkDeviceSize m_lightingBufferSize = 0;
+	VkDeviceSize m_alignedLightingSize = 0;
+
+	uint32_t m_maxFramesInFlight;
 
 	void createVertexBuffer(const std::vector<Vertex>& vertices);
 	void createIndexBuffer(const std::vector<uint32_t>& indices);

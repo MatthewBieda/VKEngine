@@ -7,8 +7,8 @@
 #include <stdexcept>
 #include <iostream>
 
-GPUBuffer::GPUBuffer(VulkanContext& context, Commands& commands, const std::vector<Vertex>& vertices, const std::vector<uint32_t> indices, VkDeviceSize objectBufferSize)
-	: m_context(context), m_commands(commands), m_objectBufferSize(objectBufferSize)
+GPUBuffer::GPUBuffer(VulkanContext& context, Commands& commands, const std::vector<Vertex>& vertices, const std::vector<uint32_t> indices, VkDeviceSize objectBufferSize, uint32_t maxFramesInFlight)
+	: m_context(context), m_commands(commands), m_objectBufferSize(objectBufferSize), m_maxFramesInFlight(maxFramesInFlight)
 {
 	createVertexBuffer(vertices);
 	createIndexBuffer(indices);
@@ -31,13 +31,15 @@ void GPUBuffer::updateObjectBuffer(const void* data, size_t size)
 	memcpy(m_objectBufferMapped, data, size);
 }
 
-void GPUBuffer::updateLightingBuffer(const void* data, size_t size)
+void GPUBuffer::updateLightingBuffer(const void* data, size_t size, uint32_t currentFrame)
 {
 	if (size > m_lightingBufferSize)
 	{
 		throw std::runtime_error("Light buffer overflow!");
 	}
-	memcpy(m_lightingBufferMapped, data, size);
+
+	VkDeviceSize offset = currentFrame * m_alignedLightingSize;
+	memcpy((char*)m_lightingBufferMapped + offset, data, size);
 }
 
 void GPUBuffer::createVertexBuffer(const std::vector<Vertex>& vertices)
@@ -134,11 +136,19 @@ void GPUBuffer::createIndexBuffer(const std::vector<uint32_t>& indices)
 
 void GPUBuffer::createLightingBuffer(VkDeviceSize lightingBufferSize)
 {
+	VkPhysicalDeviceProperties props;
+	vkGetPhysicalDeviceProperties(m_context.getPhysicalDevice(), &props);
+
+	VkDeviceSize alignment = props.limits.minStorageBufferOffsetAlignment;
 	m_lightingBufferSize = lightingBufferSize;
+
+	// Round size up to the next multiple of alignment
+	VkDeviceSize alignedLightingSize = (m_lightingBufferSize + alignment - 1) & ~(alignment - 1);
+	m_alignedLightingSize = alignedLightingSize;
 
 	VkBufferCreateInfo bufferInfo{};
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufferInfo.size = m_lightingBufferSize;
+	bufferInfo.size = m_alignedLightingSize * m_maxFramesInFlight;
 	bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -157,7 +167,7 @@ void GPUBuffer::createLightingBuffer(VkDeviceSize lightingBufferSize)
 	vmaGetAllocationInfo(m_context.getAllocator(), m_lightingAllocation, &allocInfoDetails);
 	m_lightingBufferMapped = allocInfoDetails.pMappedData;
 
-	nameObject(m_context.getDevice(), m_objectBuffer, "LightingBuffer_SSBO");
+	nameObject(m_context.getDevice(), m_lightingBuffer, "LightingBuffer_SSBO");
 }
 
 void GPUBuffer::createObjectBuffer(size_t maxObjects)

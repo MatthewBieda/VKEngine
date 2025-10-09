@@ -29,6 +29,9 @@
 #include "Camera.hpp" // Free camera
 #include "Lights.hpp" // Light types
 
+static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
+uint32_t currentFrame = 0;
+
 struct PushConstants
 {
 	glm::mat4 view{};
@@ -82,9 +85,6 @@ void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GP
 
 int main()
 {
-	static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
-	uint32_t currentFrame = 0;
-
 	loadModel("../Models/viking_room.obj");
 
 	GLFWwindow* window = createWindow(appState);
@@ -92,7 +92,7 @@ int main()
 	Swapchain swapchain(window, context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
 
-	GPUBuffer buffer(context, commands, vertices, indices, sizeof(ObjectData));
+	GPUBuffer buffer(context, commands, vertices, indices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
 	buffer.createObjectBuffer(maxObjects);
 	setupSceneObjects(buffer, objectData);
 	buffer.createLightingBuffer(sizeof(LightingData));
@@ -118,7 +118,6 @@ int main()
 
 	Pipeline scenePipeline(context, swapchain, descriptors, "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat(), PipelineType::Scene);
 	Pipeline skyboxPipeline(context, swapchain, descriptors, "../Shaders/skyboxvert.spv", "../Shaders/skyboxfrag.spv", image.getDepthFormat(), PipelineType::Skybox);
-
 
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
 
@@ -271,10 +270,11 @@ int main()
 			1.0f
 		);
 
-		buffer.updateLightingBuffer(&lights, sizeof(LightingData));
-
 		// Wait for previous frame to finish
 		vkWaitForFences(context.getDevice(), 1, sync.getInFlightFencePtr(currentFrame), VK_TRUE, UINT64_MAX);
+
+		// update lighting buffer
+		buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);
 
 		// Acquire next swapchain image
 		uint32_t imageIndex;
@@ -351,7 +351,10 @@ int main()
 		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
 		VkDescriptorSet set = descriptors.getDescriptorSet();
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scenePipeline.getLayout(), 0, 1, &set, 0, nullptr);
+		// Calculate dynamic offset for current frame
+		uint32_t dynamicOffset = static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize());
+
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scenePipeline.getLayout(), 0, 1, &set, 1, &dynamicOffset);
 
 		pc.view = camera.GetViewMatrix();
 		pc.proj = glm::perspective(glm::radians(camera.Zoom),
@@ -542,7 +545,7 @@ void setupLighting(GPUBuffer& buffer, LightingData& lights)
 	lights.pointsLights[1].radius = 5.0f;
 
 	lights.numPointLights = 2;
-	buffer.updateLightingBuffer(&lights, sizeof(LightingData));
+	buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);
 }
 
 void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image)
