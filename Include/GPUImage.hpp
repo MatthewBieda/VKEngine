@@ -11,13 +11,13 @@ class GPUImage
 {
 public:
 	GPUImage(VulkanContext& context, Commands& commands, const std::string& path, VkExtent2D extent);
-	GPUImage(VulkanContext& context, Commands& commands, VkExtent2D extent);
 	~GPUImage();
 
 	// Load image from file and upload to GPU (creates image, view and sampler)
 	void createTextureImage(const std::string& path);
 	void createDepthImage(uint32_t width, uint32_t height);
 	void createMSAAColorImage(uint32_t width, uint32_t height, VkFormat colorFormat);
+	void createCubemap(const std::array<std::string, 6>& facePaths);
 
 	VkImage getImage() const { return m_textureImage; }
 	VkImageView getImageView() const { return m_textureImageView; }
@@ -33,6 +33,9 @@ public:
 	VkSampleCountFlagBits getMSAASamples() const { return m_msaaSamples; }
 	void recreateMSAAColorImage(uint32_t width, uint32_t height, VkFormat colorFormat);
 	void cleanupMSAAResources();
+
+	VkImage getSkyboxImage() const { return m_skyboxImage; }
+	VkImageView getSkyboxImageView() const { return m_skyboxImageView; }
 
 private:
 	VulkanContext& m_context;
@@ -57,8 +60,14 @@ private:
 	VmaAllocation m_msaaColorImageAllocation = VK_NULL_HANDLE;
 	VkImageView m_msaaColorImageView = VK_NULL_HANDLE;
 
+	// Skybox resources
+	VkImage m_skyboxImage = VK_NULL_HANDLE;
+	VmaAllocation m_skyboxImageAllocation = VK_NULL_HANDLE;
+	VkImageView m_skyboxImageView = VK_NULL_HANDLE;
+
+
 	void generateMipmaps(VkCommandBuffer cmd, uint32_t width, uint32_t height);
-	void transitionImageLayout(VkCommandBuffer cmd, VkImageLayout oldLayout, VkImageLayout newLayout, VkImage textureImage, VkImageAspectFlags aspectMask, uint32_t baseMipLevel, uint32_t mipLevelCount);
+	void transitionImageLayout(VkCommandBuffer cmd, VkImageLayout oldLayout, VkImageLayout newLayout, VkImage textureImage, VkImageAspectFlags aspectMask, uint32_t baseMipLevel = 0, uint32_t mipLevelCount = 1, uint32_t baseArrayLayer = 0, uint32_t arrayLayerCount = 1);
 	void copyBufferToImage(VkCommandBuffer cmd, VkBuffer buffer, uint32_t width, uint32_t height);
 	void createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspect, VkImageView& outview);
 	void createSampler();

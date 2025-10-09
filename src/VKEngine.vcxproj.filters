@@ -80,6 +80,12 @@
     <None Include="..\Shaders\shader.vert">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="..\Shaders\skybox.frag">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\Shaders\skybox.vert">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Include\VulkanContext.hpp">

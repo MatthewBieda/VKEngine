@@ -25,7 +25,7 @@ DescriptorManager::~DescriptorManager()
 
 void DescriptorManager::createDescriptorSetLayout()
 {
-	std::array<VkDescriptorSetLayoutBinding, 3> bindings{};
+	std::array<VkDescriptorSetLayoutBinding, 4> bindings{};
 
 	// Storage buffer for per-object data
 	bindings[0].binding = 0;
@@ -45,6 +45,12 @@ void DescriptorManager::createDescriptorSetLayout()
 	bindings[2].descriptorCount = 1;
 	bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+	// Cubemap binding
+	bindings[3].binding = 3;
+	bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[3].descriptorCount = 1;
+	bindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
 	VkDescriptorSetLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
@@ -60,10 +66,9 @@ void DescriptorManager::createDescriptorSetLayout()
 
 void DescriptorManager::createDescriptorPool()
 {
-	std::array<VkDescriptorPoolSize, 3> poolSizes{};
-	poolSizes[0] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 }; // one model matrix SSBO binding
-	poolSizes[1] = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 }; // one texture binding
-	poolSizes[2] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 }; // one lighting SSBO binding
+	std::array<VkDescriptorPoolSize, 2> poolSizes{};
+	poolSizes[0] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 }; // object data + lighting
+	poolSizes[1] = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 }; // object texture + skybox
 
 	VkDescriptorPoolCreateInfo poolInfo{};
 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -111,7 +116,12 @@ void DescriptorManager::createDescriptorSet()
 	lightingInfo.offset = 0;
 	lightingInfo.range = m_buffer.getLightingBufferSize();
 
-	std::array<VkWriteDescriptorSet, 3> persistentWrites{};
+	VkDescriptorImageInfo cubemapInfo{};
+	cubemapInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	cubemapInfo.imageView = m_image.getSkyboxImageView();
+	cubemapInfo.sampler = m_image.getSampler();
+
+	std::array<VkWriteDescriptorSet, 4> persistentWrites{};
 
 	// SSBO binding
 	persistentWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -136,6 +146,14 @@ void DescriptorManager::createDescriptorSet()
 	persistentWrites[2].descriptorCount = 1;
 	persistentWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 	persistentWrites[2].pBufferInfo = &lightingInfo;
+
+	// Cubemap binding
+	persistentWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	persistentWrites[3].dstSet = m_descriptorSet;
+	persistentWrites[3].dstBinding = 3;
+	persistentWrites[3].descriptorCount = 1;
+	persistentWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	persistentWrites[3].pImageInfo = &cubemapInfo;
 
 	vkUpdateDescriptorSets(m_context.getDevice(), static_cast<uint32_t>(persistentWrites.size()), persistentWrites.data(), 0, nullptr);
 }

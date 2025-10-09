@@ -102,8 +102,24 @@ int main()
 	image.createDepthImage(swapchain.getExtent().width, swapchain.getExtent().height);
 	image.createMSAAColorImage(swapchain.getExtent().width, swapchain.getExtent().height, swapchain.getFormat());
 
+	// Load cubemap
+	std::array<std::string, 6> skyBoxFaces = {
+		"../Textures/Skyboxes/YokohamaCity/posx.jpg",
+		"../Textures/Skyboxes/YokohamaCity/negx.jpg",
+		"../Textures/Skyboxes/YokohamaCity/posy.jpg",
+		"../Textures/Skyboxes/YokohamaCity/negy.jpg",
+		"../Textures/Skyboxes/YokohamaCity/posz.jpg",
+		"../Textures/Skyboxes/YokohamaCity/negz.jpg",
+	};
+
+	image.createCubemap(skyBoxFaces);
+
 	DescriptorManager descriptors(context, buffer, image);
-	Pipeline pipeline(context, swapchain, descriptors, "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat());
+
+	Pipeline scenePipeline(context, swapchain, descriptors, "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat(), PipelineType::Scene);
+	Pipeline skyboxPipeline(context, swapchain, descriptors, "../Shaders/skyboxvert.spv", "../Shaders/skyboxfrag.spv", image.getDepthFormat(), PipelineType::Skybox);
+
+
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
 
 	ImGuiOverlay imgui;
@@ -322,12 +338,12 @@ int main()
 		VkCullModeFlags cullMode = imgui.enableBackfaceCulling ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
 
 		// Bind pipeline, set dynamic state, bind buffers & descriptors, issue draw
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getPipeline());
-		pipeline.setViewport(cmd, viewport);
-		pipeline.setScissor(cmd, scissor);
-		pipeline.setDepthTest(cmd, imgui.enableDepthTest);
-		pipeline.setPolygonMode(cmd, polygonMode);
-		pipeline.setCullMode(cmd, cullMode);
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scenePipeline.getPipeline());
+		scenePipeline.setViewport(cmd, viewport);
+		scenePipeline.setScissor(cmd, scissor);
+		scenePipeline.setDepthTest(cmd, imgui.enableDepthTest);
+		scenePipeline.setPolygonMode(cmd, polygonMode);
+		scenePipeline.setCullMode(cmd, cullMode);
 
 		VkBuffer vertexBuffers[] = { buffer.getVertexBuffer() };
 		VkDeviceSize offsets[] = { 0 };
@@ -335,7 +351,7 @@ int main()
 		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
 		VkDescriptorSet set = descriptors.getDescriptorSet();
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getLayout(), 0, 1, &set, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scenePipeline.getLayout(), 0, 1, &set, 0, nullptr);
 
 		pc.view = camera.GetViewMatrix();
 		pc.proj = glm::perspective(glm::radians(camera.Zoom),
@@ -347,8 +363,24 @@ int main()
 		pc.enableDirectionalLight = imgui.enableDirectionalLight ? 1 : 0;
 		pc.enablePointLights = imgui.enablePointLights ? 1 : 0;
 
-		vkCmdPushConstants(cmd, pipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+		vkCmdPushConstants(cmd, scenePipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
 		vkCmdDrawIndexed(cmd, static_cast<uint32_t>(indices.size()), maxObjects, 0, 0, 0);
+
+		// Draw skybox (same render pass)
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeline.getPipeline());
+		skyboxPipeline.setViewport(cmd, viewport);
+		skyboxPipeline.setScissor(cmd, scissor);
+		skyboxPipeline.setDepthTest(cmd, VK_TRUE);
+		skyboxPipeline.setPolygonMode(cmd, VK_POLYGON_MODE_FILL);
+		skyboxPipeline.setCullMode(cmd, VK_CULL_MODE_FRONT_BIT);
+
+		PushConstants skyboxPC = pc;
+		skyboxPC.view = glm::mat4(glm::mat3(camera.GetViewMatrix())); // remove translation
+		vkCmdPushConstants(cmd, skyboxPipeline.getLayout(),
+						   VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+						   0, sizeof(PushConstants), &skyboxPC);
+
+		vkCmdDraw(cmd, 36, 1, 0, 0);
 
 		vkCmdEndRendering(cmd);
 

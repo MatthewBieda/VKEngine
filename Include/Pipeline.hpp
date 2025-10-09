@@ -4,17 +4,22 @@
 #include <array>
 
 #include "volk.h"
-
 #include "glm.hpp"
 
 class VulkanContext;
 class Swapchain;
 class DescriptorManager;
 
+enum class PipelineType
+{
+	Scene,
+	Skybox
+};
+
 class Pipeline
 {
 public:
-	Pipeline(VulkanContext& context, Swapchain& swapchain, DescriptorManager& descriptors, const std::string& vertPath, const std::string& fragPath, VkFormat depthFormat);
+	Pipeline(VulkanContext& context, Swapchain& swapchain, DescriptorManager& descriptors, const std::string& vertPath, const std::string& fragPath, VkFormat depthFormat, PipelineType type = PipelineType::Scene);
 	~Pipeline();
 
 	Pipeline(const Pipeline&) = delete;
@@ -34,7 +39,7 @@ public:
 private:
 	VkShaderModule createShaderModule(const std::vector<char>& code);
 	std::vector<char> readFile(const std::string& filename);
-	void createPipeline(const std::string& vertPath, const std::string& fragPath, VkFormat colorFormat, VkFormat depthFormat);
+	void createPipeline(const std::string& vertPath, const std::string& fragPath, VkFormat colorFormat, VkFormat depthFormat, PipelineType type);
 
 	VulkanContext& m_context;
 	Swapchain& m_swapchain;

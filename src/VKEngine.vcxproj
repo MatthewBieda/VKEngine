@@ -161,6 +161,8 @@
     <None Include="..\README.md" />
     <None Include="..\Shaders\shader.frag" />
     <None Include="..\Shaders\shader.vert" />
+    <None Include="..\Shaders\skybox.frag" />
+    <None Include="..\Shaders\skybox.vert" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Include\Camera.hpp" />

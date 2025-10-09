@@ -8,6 +8,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <iostream>
+#include <array>
 
 GPUImage::GPUImage(VulkanContext& context, Commands& commands, const std::string& path, VkExtent2D extent)
 	: m_context(context), m_commands(commands) 
@@ -29,6 +30,9 @@ GPUImage::~GPUImage()
 	vkDestroySampler(m_context.getDevice(), m_textureSampler, nullptr);
 	vkDestroyImageView(m_context.getDevice(), m_textureImageView, nullptr);
 	vmaDestroyImage(m_context.getAllocator(), m_textureImage, m_textureImageAllocation);
+
+	vkDestroyImageView(m_context.getDevice(), m_skyboxImageView, nullptr);
+	vmaDestroyImage(m_context.getAllocator(), m_skyboxImage, m_skyboxImageAllocation);
 
 	if (m_depthImageView != VK_NULL_HANDLE)
 	{
@@ -235,6 +239,126 @@ void GPUImage::createMSAAColorImage(uint32_t width, uint32_t height, VkFormat co
 	nameObject(m_context.getDevice(), m_msaaColorImageView, "ImageView_MSAA");
 }
 
+void GPUImage::createCubemap(const std::array<std::string, 6>& facePaths)
+{
+	int texWidth = 0, texHeight = 0, texChannels = 0;
+	std::vector<uint8_t*> facePixels(6);
+
+	for (size_t i = 0; i < 6; ++i)
+	{
+		facePixels[i] = stbi_load(facePaths[i].c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+		if (!facePixels[i])
+		{
+			throw std::runtime_error("Failed to load cubemap face");
+		}
+	}
+
+	VkDeviceSize layerSize = texWidth * texHeight * 4;
+	VkDeviceSize imageSize = layerSize * 6;
+
+	// Create staging buffer
+	VkBuffer stagingBuffer = VK_NULL_HANDLE;
+	VmaAllocation stagingAllocation = VK_NULL_HANDLE;
+
+	VkBufferCreateInfo bufferInfo{};
+	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferInfo.size = imageSize;
+	bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	VmaAllocationCreateInfo allocInfo{};
+	allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+	allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+
+	if (vmaCreateBuffer(m_context.getAllocator(), &bufferInfo, &allocInfo, &stagingBuffer, &stagingAllocation, nullptr) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create staging buffer for texture");
+	}
+
+	// Copy all 6 faces into staging
+	void* mapped = nullptr;
+	vmaMapMemory(m_context.getAllocator(), stagingAllocation, &mapped);
+	for (size_t i = 0; i < 6; ++i)
+	{
+		memcpy((uint8_t*)mapped + i * layerSize, facePixels[i], static_cast<size_t>(layerSize));
+		stbi_image_free(facePixels[i]);
+	}
+	vmaUnmapMemory(m_context.getAllocator(), stagingAllocation);
+
+	// Create cubemap image
+	VkImageCreateInfo imageInfo{};
+	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageInfo.imageType = VK_IMAGE_TYPE_2D;
+	imageInfo.extent.width = static_cast<uint32_t>(texWidth);
+	imageInfo.extent.height = static_cast<uint32_t>(texHeight);
+	imageInfo.extent.depth = 1;
+	imageInfo.mipLevels = 1;
+	imageInfo.arrayLayers = 6;
+	imageInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+
+	VmaAllocationCreateInfo imgAllocInfo{};
+	imgAllocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+	if (vmaCreateImage(m_context.getAllocator(), &imageInfo, &imgAllocInfo, &m_skyboxImage, &m_skyboxImageAllocation, nullptr) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create cubemap image");
+	}
+	nameObject(m_context.getDevice(), m_skyboxImage, "Image_Cubemap");
+	std::cout << "Cubemap image created successfully" << std::endl;
+
+	VkCommandBuffer cmd = m_commands.beginSingleTimeCommands();
+
+	transitionImageLayout(cmd, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, m_skyboxImage, VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6);
+
+	// Copy buffer to all 6 layers
+	std::array<VkBufferImageCopy, 6> regions{};
+	for (uint32_t i = 0; i < 6; ++i)
+	{
+		regions[i].bufferOffset = i * layerSize;
+		regions[i].imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		regions[i].imageSubresource.mipLevel = 0;
+		regions[i].imageSubresource.baseArrayLayer = i;
+		regions[i].imageSubresource.layerCount = 1;
+		regions[i].imageExtent = { (uint32_t)texWidth, (uint32_t)texHeight, 1 };
+	}
+
+	vkCmdCopyBufferToImage(cmd, stagingBuffer, m_skyboxImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
+		static_cast<uint32_t>(regions.size()), regions.data());
+
+	transitionImageLayout(cmd, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_skyboxImage, VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6);
+
+	m_commands.endSingleTimeCommands(cmd);
+
+	vmaDestroyBuffer(m_context.getAllocator(), stagingBuffer, stagingAllocation);
+
+	// Create cubemap image view
+	VkImageViewCreateInfo viewInfo{};
+	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewInfo.image = m_skyboxImage;
+	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+	viewInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	viewInfo.subresourceRange.baseMipLevel = 0;
+	viewInfo.subresourceRange.levelCount = 1;
+	viewInfo.subresourceRange.baseArrayLayer = 0;
+	viewInfo.subresourceRange.layerCount = 6;
+
+	if (vkCreateImageView(m_context.getDevice(), &viewInfo, nullptr, &m_skyboxImageView) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create cubemap image view");
+	}
+	nameObject(m_context.getDevice(), m_skyboxImageView, "ImageView_Cubemap");
+	std::cout << "Cubemap image created successfully" << std::endl;
+
+	// Reuse texture sampler
+}
+
 void GPUImage::recreateMSAAColorImage(uint32_t width, uint32_t height, VkFormat colorFormat)
 {
 	cleanupMSAAResources();
@@ -308,7 +432,7 @@ void GPUImage::generateMipmaps(VkCommandBuffer cmd, uint32_t width, uint32_t hei
 		m_textureImage, VK_IMAGE_ASPECT_COLOR_BIT, m_mipLevels - 1, 1);
 }
 
-void GPUImage::transitionImageLayout(VkCommandBuffer cmd, VkImageLayout oldLayout, VkImageLayout newLayout, VkImage image, VkImageAspectFlags aspectMask, uint32_t baseMipLevel, uint32_t mipLevelCount)
+void GPUImage::transitionImageLayout(VkCommandBuffer cmd, VkImageLayout oldLayout, VkImageLayout newLayout, VkImage image, VkImageAspectFlags aspectMask, uint32_t baseMipLevel, uint32_t mipLevelCount, uint32_t baseArrayLayer, uint32_t arrayLayerCount)
 {
 	VkImageMemoryBarrier2 barrier{};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -320,8 +444,8 @@ void GPUImage::transitionImageLayout(VkCommandBuffer cmd, VkImageLayout oldLayou
 	barrier.subresourceRange.aspectMask = aspectMask;
 	barrier.subresourceRange.baseMipLevel = baseMipLevel;
 	barrier.subresourceRange.levelCount = mipLevelCount;
-	barrier.subresourceRange.baseArrayLayer = 0;
-	barrier.subresourceRange.layerCount = 1;
+	barrier.subresourceRange.baseArrayLayer = baseArrayLayer;
+	barrier.subresourceRange.layerCount = arrayLayerCount;
 
 	VkPipelineStageFlags2 srcStage, dstStage;
 	VkAccessFlags2 srcAccess, dstAccess;

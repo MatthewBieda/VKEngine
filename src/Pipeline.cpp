@@ -10,10 +10,10 @@
 #include <iostream>
 #include <array>
 
-Pipeline::Pipeline(VulkanContext& context, Swapchain& swapchain, DescriptorManager& descriptors, const std::string& vertPath, const std::string& fragPath, VkFormat depthFormat)
+Pipeline::Pipeline(VulkanContext& context, Swapchain& swapchain, DescriptorManager& descriptors, const std::string& vertPath, const std::string& fragPath, VkFormat depthFormat, PipelineType type)
 	: m_context(context), m_swapchain(swapchain), m_descriptors(descriptors)
 {
-	createPipeline(vertPath, fragPath, m_swapchain.getFormat(), depthFormat);
+	createPipeline(vertPath, fragPath, m_swapchain.getFormat(), depthFormat, type);
 }
 
 Pipeline::~Pipeline()
@@ -80,7 +80,7 @@ std::vector<char> Pipeline::readFile(const std::string& filename)
 	return buffer;
 }
 
-void Pipeline::createPipeline(const std::string& vertPath, const std::string& fragPath, VkFormat colorFormat, VkFormat depthFormat)
+void Pipeline::createPipeline(const std::string& vertPath, const std::string& fragPath, VkFormat colorFormat, VkFormat depthFormat, PipelineType type)
 {
 	std::vector<char> vertCode = readFile(vertPath);
 	std::vector<char> fragCode = readFile(fragPath);
@@ -239,12 +239,41 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 	graphicsPipelineInfo.renderPass = VK_NULL_HANDLE;
 	graphicsPipelineInfo.subpass = 0;
 
+	switch (type)
+	{
+	case PipelineType::Scene:
+		// Regular mesh pipeline uses default configuration
+		break;
+
+	case PipelineType::Skybox:
+		// Skybox should be rendered behind everything and visible from inside the cube
+		rasterizerInfo.cullMode = VK_CULL_MODE_FRONT_BIT; // Draw inside of cube
+		depthStencil.depthWriteEnable = VK_FALSE; // Don't overwrite scene depth
+		depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+		vertexInputInfo.vertexBindingDescriptionCount = 0;
+		vertexInputInfo.pVertexBindingDescriptions = nullptr;
+		vertexInputInfo.vertexAttributeDescriptionCount = 0;
+		vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+		break;
+	}
+
 	if (vkCreateGraphicsPipelines(m_context.getDevice(), VK_NULL_HANDLE, 1, &graphicsPipelineInfo, nullptr, &m_pipeline) != VK_SUCCESS)
 	{
 		throw std::runtime_error("Failed to create graphics pipeline");
 	}
-	std::cout << "Graphics Pipeline created successfully" << std::endl;
-	nameObject(m_context.getDevice(), m_pipeline, "GraphicsPipeline_Main");
+
+	switch (type)
+	{
+		case PipelineType::Scene:
+			std::cout << "Graphics Pipeline (Scene) created successfully" << std::endl;
+			nameObject(m_context.getDevice(), m_pipeline, "GraphicsPipeline_Scene");
+			break;
+
+		case PipelineType::Skybox:
+			std::cout << "Graphics Pipeline (Skybox) created successfully" << std::endl;
+			nameObject(m_context.getDevice(), m_pipeline, "GraphicsPipeline_Skybox");
+			break;
+	}
 
 	// Destory shader modules after pipeline creation
 	vkDestroyShaderModule(m_context.getDevice(), vertModule, nullptr);
