@@ -10,10 +10,10 @@
 #include <iostream>
 #include <array>
 
-GPUImage::GPUImage(VulkanContext& context, Commands& commands, const std::string& path, VkExtent2D extent)
+GPUImage::GPUImage(VulkanContext& context, Commands& commands)
 	: m_context(context), m_commands(commands) 
 {
-	createTextureImage(path);
+	createSampler();
 }
 
 GPUImage::~GPUImage()
@@ -27,9 +27,12 @@ GPUImage::~GPUImage()
 		vmaDestroyImage(m_context.getAllocator(), m_msaaColorImage, m_msaaColorImageAllocation);
 	}
 
-	vkDestroySampler(m_context.getDevice(), m_textureSampler, nullptr);
-	vkDestroyImageView(m_context.getDevice(), m_textureImageView, nullptr);
-	vmaDestroyImage(m_context.getAllocator(), m_textureImage, m_textureImageAllocation);
+	vkDestroySampler(m_context.getDevice(), m_sharedTextureSampler, nullptr);
+	for (size_t i = 0; i < m_textures.size(); ++i)
+	{
+		vkDestroyImageView(m_context.getDevice(), m_textures[i].view, nullptr);
+		vmaDestroyImage(m_context.getAllocator(), m_textures[i].image, m_textures[i].allocation);
+	}
 
 	vkDestroyImageView(m_context.getDevice(), m_skyboxImageView, nullptr);
 	vmaDestroyImage(m_context.getAllocator(), m_skyboxImage, m_skyboxImageAllocation);
@@ -44,7 +47,19 @@ GPUImage::~GPUImage()
 	}
 }
 
-void GPUImage::createTextureImage(const std::string& path)
+uint32_t GPUImage::loadTexture(const std::string& path)
+{
+	Texture tex = createTextureImageFromFile(path);
+
+	uint32_t index = static_cast<uint32_t>(m_textures.size());
+	m_textures.push_back(tex);
+	m_textureViews.push_back(tex.view);
+
+	std::cout << "Loaded Texture [" << index << "]: " << path << std::endl;
+	return index;
+}
+
+GPUImage::Texture GPUImage::createTextureImageFromFile(const std::string& path)
 {
 	int texWidth, texHeight, texChannels;
 	uint8_t* pixels = stbi_load(path.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
@@ -53,9 +68,10 @@ void GPUImage::createTextureImage(const std::string& path)
 	{
 		throw std::runtime_error("Failed to load texture image!");
 	}
+	Texture tex;
 
 	// Calculate mip levels
-	m_mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
+	tex.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
 
 	VkDeviceSize imageSize = texWidth * texHeight * 4;
 
@@ -94,7 +110,7 @@ void GPUImage::createTextureImage(const std::string& path)
 	imageInfo.extent.width = static_cast<uint32_t>(texWidth);
 	imageInfo.extent.height = static_cast<uint32_t>(texHeight);
 	imageInfo.extent.depth = 1;
-	imageInfo.mipLevels = m_mipLevels;
+	imageInfo.mipLevels = tex.mipLevels;
 	imageInfo.arrayLayers = 1;
 	imageInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
 	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -107,37 +123,36 @@ void GPUImage::createTextureImage(const std::string& path)
 	VmaAllocationCreateInfo imgAllocInfo{};
 	imgAllocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 
-	if (vmaCreateImage(m_context.getAllocator(), &imageInfo, &imgAllocInfo, &m_textureImage, &m_textureImageAllocation, nullptr) != VK_SUCCESS) 
+	if (vmaCreateImage(m_context.getAllocator(), &imageInfo, &imgAllocInfo, &tex.image, &tex.allocation, nullptr) != VK_SUCCESS) 
 	{
 		throw std::runtime_error("Failed to create texture image");
 	}
-	nameObject(m_context.getDevice(), m_textureImage, "Image_Texture");
+	nameObject(m_context.getDevice(), tex.image, "Image_Texture");
 	std::cout << "Texture Image created successfully" << std::endl;
 
 	VkCommandBuffer cmd = m_commands.beginSingleTimeCommands();
 
 	// Transition base mip level for transfer
-	transitionImageLayout(cmd, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, m_textureImage, VK_IMAGE_ASPECT_COLOR_BIT, 0, 1);
+	transitionImageLayout(cmd, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, tex.image, VK_IMAGE_ASPECT_COLOR_BIT, 0, 1);
 
 	// Copy buffer to base mip level (mip 0)
-	copyBufferToImage(cmd, stagingBuffer, texWidth, texHeight);
+	copyBufferToImage(cmd, stagingBuffer, tex.image, texWidth, texHeight);
 
 	// Generate mipmaps
-	generateMipmaps(cmd, texWidth, texHeight);
+	generateMipmaps(cmd, tex.image, tex.mipLevels, texWidth, texHeight);
 
 	m_commands.endSingleTimeCommands(cmd);
 
 	vmaDestroyBuffer(m_context.getAllocator(), stagingBuffer, stagingAllocation);
 
 	// Create view and sampler
-	createImageView(m_textureImage, imageInfo.format, VK_IMAGE_ASPECT_COLOR_BIT, m_textureImageView);
+	createImageView(tex.image, imageInfo.format, VK_IMAGE_ASPECT_COLOR_BIT, tex.view, tex.mipLevels);
 	std::cout << "Texture Image View created successfully" << std::endl;
 
-	createSampler();
-	std::cout << "Texture Image Sampler created successfully" << std::endl;
+	nameObject(m_context.getDevice(), tex.view, "ImageView_Texture");
+	nameObject(m_context.getDevice(), m_sharedTextureSampler, "Sampler_Texture");
 
-	nameObject(m_context.getDevice(), m_textureImageView, "ImageView_Texture");
-	nameObject(m_context.getDevice(), m_textureSampler, "Sampler_Texture");
+	return tex;
 }
 
 void GPUImage::createDepthImage(uint32_t width, uint32_t height)
@@ -371,7 +386,7 @@ void GPUImage::cleanupMSAAResources()
 	vmaDestroyImage(m_context.getAllocator(), m_msaaColorImage, m_msaaColorImageAllocation);
 }
 
-void GPUImage::generateMipmaps(VkCommandBuffer cmd, uint32_t width, uint32_t height)
+void GPUImage::generateMipmaps(VkCommandBuffer cmd, VkImage image, uint32_t mipLevels, uint32_t width, uint32_t height)
 {
 	// Check if linear blitting is supported for our format
 	VkFormatProperties formatProps;
@@ -385,14 +400,14 @@ void GPUImage::generateMipmaps(VkCommandBuffer cmd, uint32_t width, uint32_t hei
 	int32_t mipWidth = width;
 	int32_t mipHeight = height;
 
-	for (uint32_t i = 1; i < m_mipLevels; ++i)
+	for (uint32_t i = 1; i < mipLevels; ++i)
 	{
 		// Transition previous mip level to TRANSFER_SRC_OPTIMAL for reading
-		transitionImageLayout(cmd, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, m_textureImage, VK_IMAGE_ASPECT_COLOR_BIT, i - 1, 1);
+		transitionImageLayout(cmd, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image, VK_IMAGE_ASPECT_COLOR_BIT, i - 1, 1);
 
 		// Transition next mip level to TRANSFER_DST_OPTIMAL for blitting
 		transitionImageLayout(cmd, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			m_textureImage, VK_IMAGE_ASPECT_COLOR_BIT, i, 1);
+			image, VK_IMAGE_ASPECT_COLOR_BIT, i, 1);
 
 		// Set up blit operation
 		VkImageBlit blit{};
@@ -415,13 +430,13 @@ void GPUImage::generateMipmaps(VkCommandBuffer cmd, uint32_t width, uint32_t hei
 		blit.dstSubresource.layerCount = 1;
 
 		// Perform the blit (current mip level i is still in TRANSFER_DST_OPTIMAL)
-		vkCmdBlitImage(cmd, m_textureImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-							m_textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		vkCmdBlitImage(cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+							image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 							1, &blit, VK_FILTER_LINEAR);
 
 		// Transition the previous mip level to SHADER_READ_ONLY_OPTIMAL
 		transitionImageLayout(cmd, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			m_textureImage, VK_IMAGE_ASPECT_COLOR_BIT, i - 1, 1);
+			image, VK_IMAGE_ASPECT_COLOR_BIT, i - 1, 1);
 
 		mipWidth = nextMipWidth;
 		mipHeight = nextMipHeight;
@@ -429,7 +444,7 @@ void GPUImage::generateMipmaps(VkCommandBuffer cmd, uint32_t width, uint32_t hei
 
 	// Transition the last mip level to SHADER_READ_ONLY_OPTIMAL
 	transitionImageLayout(cmd, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		m_textureImage, VK_IMAGE_ASPECT_COLOR_BIT, m_mipLevels - 1, 1);
+		image, VK_IMAGE_ASPECT_COLOR_BIT, mipLevels - 1, 1);
 }
 
 void GPUImage::transitionImageLayout(VkCommandBuffer cmd, VkImageLayout oldLayout, VkImageLayout newLayout, VkImage image, VkImageAspectFlags aspectMask, uint32_t baseMipLevel, uint32_t mipLevelCount, uint32_t baseArrayLayer, uint32_t arrayLayerCount)
@@ -510,7 +525,7 @@ void GPUImage::transitionImageLayout(VkCommandBuffer cmd, VkImageLayout oldLayou
 	vkCmdPipelineBarrier2(cmd, &depInfo);
 }
 
-void GPUImage::copyBufferToImage(VkCommandBuffer cmd, VkBuffer buffer, uint32_t width, uint32_t height)
+void GPUImage::copyBufferToImage(VkCommandBuffer cmd, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
 {
 	VkBufferImageCopy region{};
 	region.bufferOffset = 0;
@@ -523,10 +538,10 @@ void GPUImage::copyBufferToImage(VkCommandBuffer cmd, VkBuffer buffer, uint32_t 
 	region.imageOffset = { 0, 0, 0 };
 	region.imageExtent = { width, height, 1 };
 
-	vkCmdCopyBufferToImage(cmd, buffer, m_textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+	vkCmdCopyBufferToImage(cmd, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 }
 
-void GPUImage::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspect, VkImageView& outview)
+void GPUImage::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspect, VkImageView& outview, uint32_t mipLevels)
 {
 	VkImageViewCreateInfo viewInfo{};
 	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -535,18 +550,7 @@ void GPUImage::createImageView(VkImage image, VkFormat format, VkImageAspectFlag
 	viewInfo.format = format;
 	viewInfo.subresourceRange.aspectMask = aspect;
 	viewInfo.subresourceRange.baseMipLevel = 0;
-
-	// For texture images, include all mip levels in the view
-	if (image == m_textureImage)
-	{
-		viewInfo.subresourceRange.levelCount = m_mipLevels;
-	}
-	else 
-	{
-		viewInfo.subresourceRange.levelCount = 1; // Depth and MSAA won't use mipmaps
-
-	}
-
+	viewInfo.subresourceRange.levelCount = mipLevels;
 	viewInfo.subresourceRange.baseArrayLayer = 0;
 	viewInfo.subresourceRange.layerCount = 1;
 
@@ -577,9 +581,9 @@ void GPUImage::createSampler()
 	samplerInfo.minLod = 0.0f;
 	samplerInfo.maxLod = VK_LOD_CLAMP_NONE;
 
-	if (vkCreateSampler(m_context.getDevice(), &samplerInfo, nullptr, &m_textureSampler) != VK_SUCCESS)
+	if (vkCreateSampler(m_context.getDevice(), &samplerInfo, nullptr, &m_sharedTextureSampler) != VK_SUCCESS)
 	{
-		throw std::runtime_error("Failed to create texture sampler");
+		throw std::runtime_error("Failed to create shared texture sampler");
 	}
 }
 

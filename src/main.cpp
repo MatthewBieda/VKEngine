@@ -50,7 +50,11 @@ struct LightingData
 
 struct ObjectData
 {
-	glm::mat4 model{};
+	glm::mat4 model;
+	uint32_t textureIndex;
+	uint32_t padding0;
+	uint32_t padding1;
+	uint32_t padding2;
 };
 uint32_t maxObjects = 16;
 std::vector<ObjectData> objectData(maxObjects);
@@ -67,8 +71,6 @@ struct AppState
 
 Camera camera;
 
-const std::string TEXTURE_PATH = "../Textures/viking_room.png";
-
 std::vector<Vertex> vertices{};
 std::vector<uint32_t> indices{};
 
@@ -79,7 +81,7 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos);
 void processInput(GLFWwindow* window, float deltaTime);
 
 void loadModel(const std::string& modelPath);
-void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData);
+void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, uint32_t textureIndex);
 void setupLighting(GPUBuffer& buffer, LightingData& lights);
 void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image);
 
@@ -94,11 +96,14 @@ int main()
 
 	GPUBuffer buffer(context, commands, vertices, indices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
 	buffer.createObjectBuffer(maxObjects);
-	setupSceneObjects(buffer, objectData);
 	buffer.createLightingBuffer(sizeof(LightingData));
-	setupLighting(buffer, lights);
 
-	GPUImage image(context, commands, TEXTURE_PATH, swapchain.getExtent());
+	GPUImage image(context, commands);
+	// Load object textures
+	uint32_t vikingRoomTex = image.loadTexture("../Textures/viking_room.png");
+	uint32_t shavedIceTex = image.loadTexture("../Textures/ice.jpg");
+
+	// Create special images
 	image.createDepthImage(swapchain.getExtent().width, swapchain.getExtent().height);
 	image.createMSAAColorImage(swapchain.getExtent().width, swapchain.getExtent().height, swapchain.getFormat());
 
@@ -115,6 +120,7 @@ int main()
 	image.createCubemap(skyBoxFaces);
 
 	DescriptorManager descriptors(context, buffer, image);
+	descriptors.updateTextureArray(image.getTextureViews(), image.getSampler());
 
 	Pipeline scenePipeline(context, swapchain, descriptors, "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat(), PipelineType::Scene);
 	Pipeline skyboxPipeline(context, swapchain, descriptors, "../Shaders/skyboxvert.spv", "../Shaders/skyboxfrag.spv", image.getDepthFormat(), PipelineType::Skybox);
@@ -125,6 +131,10 @@ int main()
 	imgui.init(window, context, descriptors, swapchain.getFormat(), swapchain.getImageCount(), image.getMSAASamples());
 
 	VkDebugUtilsLabelEXT cmdLabel = makeLabel("Command List: ", 0.2f, 0.2f, 0.8f);
+
+	// Scene construction
+	setupSceneObjects(buffer, objectData, vikingRoomTex);
+	setupLighting(buffer, lights);
 
 	// Pre-render loop struct initialization
 	VkCommandBufferBeginInfo beginInfo{};
@@ -351,9 +361,9 @@ int main()
 		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
 		VkDescriptorSet set = descriptors.getDescriptorSet();
+
 		// Calculate dynamic offset for current frame
 		uint32_t dynamicOffset = static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize());
-
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scenePipeline.getLayout(), 0, 1, &set, 1, &dynamicOffset);
 
 		pc.view = camera.GetViewMatrix();
@@ -499,7 +509,7 @@ void loadModel(const std::string& modelPath)
 	}
 }
 
-void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
+void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, uint32_t textureIndex)
 {
 	const int gridSizeX = 4;
 	const int gridSizeY = 4;
@@ -523,7 +533,9 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 			model = glm::rotate(model, glm::radians(270.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 			model = glm::rotate(model, glm::radians(270.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
-			objectData[objIndex++].model = model;
+			objectData[objIndex].model = model;
+			objectData[objIndex].textureIndex = textureIndex;
+			objIndex++;
 		}
 	}
 

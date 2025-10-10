@@ -14,6 +14,8 @@ public:
 	DescriptorManager(VulkanContext& context, GPUBuffer& buffer, GPUImage& image);
 	~DescriptorManager();
 
+	void updateTextureArray(const std::vector<VkImageView>& textureViews, VkSampler sampler);
+
 	VkDescriptorSetLayout getDescriptorSetLayout() const { return m_descriptorSetLayout; }
 	VkDescriptorPool getDescriptorPool() const { return m_descriptorPool; }
 	VkDescriptorSet getDescriptorSet() const { return m_descriptorSet; }

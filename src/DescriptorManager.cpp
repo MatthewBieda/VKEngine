@@ -23,6 +23,28 @@ DescriptorManager::~DescriptorManager()
 	vkDestroyDescriptorSetLayout(m_context.getDevice(), m_descriptorSetLayout, nullptr);
 }
 
+void DescriptorManager::updateTextureArray(const std::vector<VkImageView>& textureViews, VkSampler sampler)
+{
+	std::vector<VkDescriptorImageInfo> imageInfos(textureViews.size());
+	for (size_t i = 0; i < textureViews.size(); ++i)
+	{
+		imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imageInfos[i].imageView = textureViews[i];
+		imageInfos[i].sampler = sampler;
+	}
+
+	VkWriteDescriptorSet write{};
+	write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	write.dstSet = m_descriptorSet;
+	write.dstBinding = 1;
+	write.dstArrayElement = 0;
+	write.descriptorCount = static_cast<uint32_t>(imageInfos.size());
+	write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	write.pImageInfo = imageInfos.data();
+
+	vkUpdateDescriptorSets(m_context.getDevice(), 1, &write, 0, nullptr);
+}
+
 void DescriptorManager::createDescriptorSetLayout()
 {
 	std::array<VkDescriptorSetLayoutBinding, 4> bindings{};
@@ -36,7 +58,7 @@ void DescriptorManager::createDescriptorSetLayout()
 	// Texture binding
 	bindings[1].binding = 1;
 	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	bindings[1].descriptorCount = 1;
+	bindings[1].descriptorCount = 1000;
 	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
 	// Lighting data
@@ -51,10 +73,24 @@ void DescriptorManager::createDescriptorSetLayout()
 	bindings[3].descriptorCount = 1;
 	bindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+	// Enable descriptor indexing flags
+	VkDescriptorBindingFlags bindingFlags[] = {
+		0, // binding 0: no special flags
+		VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT, // Don't need all slots filled
+		0, // binding 2
+		0  // binding 3
+	};
+
+	VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsInfo{};
+	bindingFlagsInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+	bindingFlagsInfo.bindingCount = 4;
+	bindingFlagsInfo.pBindingFlags = bindingFlags;
+
 	VkDescriptorSetLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
 	layoutInfo.pBindings = bindings.data();
+	layoutInfo.pNext = &bindingFlagsInfo;
 
 	if (vkCreateDescriptorSetLayout(m_context.getDevice(), &layoutInfo, nullptr, &m_descriptorSetLayout) != VK_SUCCESS)
 	{
@@ -69,7 +105,7 @@ void DescriptorManager::createDescriptorPool()
 	std::array<VkDescriptorPoolSize, 3> poolSizes{};
 	poolSizes[0] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 }; // object data (static)
 	poolSizes[1] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1 }; // Lighting (dynamic)
-	poolSizes[2] = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 }; // object texture + skybox
+	poolSizes[2] = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1001 }; // object texture + skybox
 
 	VkDescriptorPoolCreateInfo poolInfo{};
 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -101,28 +137,25 @@ void DescriptorManager::createDescriptorSet()
 	std::cout << "Descriptor Set Allocated successfully" << std::endl;
 	nameObject(m_context.getDevice(), m_descriptorSet, "DescriptorSet");
 
-	// Persistent SSBO + texture bindings
+	// Persistent per-object SSBO
 	VkDescriptorBufferInfo ssboInfo{};
 	ssboInfo.buffer = m_buffer.getObjectBuffer();
 	ssboInfo.offset = 0;
 	ssboInfo.range = m_buffer.getObjectBufferSize();
 
-	VkDescriptorImageInfo imageInfo{};
-	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	imageInfo.imageView = m_image.getImageView();
-	imageInfo.sampler = m_image.getSampler();
-
+	// Lighting (dynamic) buffer info
 	VkDescriptorBufferInfo lightingInfo{};
 	lightingInfo.buffer = m_buffer.getLightingBuffer();
 	lightingInfo.offset = 0;
 	lightingInfo.range = m_buffer.getLightingBufferSize();
 
+	// Cubemao info
 	VkDescriptorImageInfo cubemapInfo{};
 	cubemapInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	cubemapInfo.imageView = m_image.getSkyboxImageView();
 	cubemapInfo.sampler = m_image.getSampler();
 
-	std::array<VkWriteDescriptorSet, 4> persistentWrites{};
+	std::array<VkWriteDescriptorSet, 3> persistentWrites{};
 
 	// SSBO binding
 	persistentWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -132,29 +165,21 @@ void DescriptorManager::createDescriptorSet()
 	persistentWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 	persistentWrites[0].pBufferInfo = &ssboInfo;
 
-	// Texture binding
+	// Lighting SSBO
 	persistentWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	persistentWrites[1].dstSet = m_descriptorSet;
-	persistentWrites[1].dstBinding = 1;
+	persistentWrites[1].dstBinding = 2;
 	persistentWrites[1].descriptorCount = 1;
-	persistentWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	persistentWrites[1].pImageInfo = &imageInfo;
-
-	// Lighting SSBO
-	persistentWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	persistentWrites[2].dstSet = m_descriptorSet;
-	persistentWrites[2].dstBinding = 2;
-	persistentWrites[2].descriptorCount = 1;
-	persistentWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
-	persistentWrites[2].pBufferInfo = &lightingInfo;
+	persistentWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+	persistentWrites[1].pBufferInfo = &lightingInfo;
 
 	// Cubemap binding
-	persistentWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	persistentWrites[3].dstSet = m_descriptorSet;
-	persistentWrites[3].dstBinding = 3;
-	persistentWrites[3].descriptorCount = 1;
-	persistentWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	persistentWrites[3].pImageInfo = &cubemapInfo;
+	persistentWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	persistentWrites[2].dstSet = m_descriptorSet;
+	persistentWrites[2].dstBinding = 3;
+	persistentWrites[2].descriptorCount = 1;
+	persistentWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	persistentWrites[2].pImageInfo = &cubemapInfo;
 
 	vkUpdateDescriptorSets(m_context.getDevice(), static_cast<uint32_t>(persistentWrites.size()), persistentWrites.data(), 0, nullptr);
 }

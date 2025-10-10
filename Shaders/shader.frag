@@ -1,4 +1,5 @@
 #version 450
+#extension GL_EXT_nonuniform_qualifier : require
 
 layout(push_constant) uniform PushConstants
 {
@@ -9,7 +10,8 @@ layout(push_constant) uniform PushConstants
     int enablePointLights;
 } pc;
 
-layout(set = 0, binding = 1) uniform sampler2D tex;
+layout(set = 0, binding = 1) uniform sampler2D tex[];
+layout(set = 0, binding = 3) uniform samplerCube skybox;
 
 // In GLSL structs must be defined outside the buffer
 struct DirectionalLight
@@ -41,6 +43,7 @@ layout(std430, set = 0, binding = 2) readonly buffer Lighting
 layout(location = 0) in vec3 fragPos;
 layout(location = 1) in vec3 fragNormal;
 layout(location = 2) in vec2 fragTexCoord;
+layout(location = 3) flat in uint fragTextureIndex;
 
 layout(location = 0) out vec4 outColor;
 
@@ -55,7 +58,7 @@ void main() {
 
     vec3 N = normalize(fragNormal);
     vec3 V = normalize(pc.cameraPos - fragPos);
-    vec3 albedo = texture(tex, fragTexCoord).rgb;
+    vec3 albedo = texture(nonuniformEXT(tex[fragTextureIndex]),  fragTexCoord).rgb;
 
     vec3 ambient = 0.05 * albedo;
     vec3 diffuse = vec3(0.0);
@@ -98,6 +101,17 @@ void main() {
         };
     }
 
-    vec3 finalColor = ambient + diffuse + specular;
+    // Environment reflections (simple version)
+    vec3 R = reflect(-V, N); // Reflect view direction around normal
+    vec3 envReflection = texture(skybox, R).rgb;
+    
+    // Fresnel approximation - objects reflect more at grazing angles
+    float fresnel = pow(1.0 - max(dot(N, V), 0.0), 5.0);
+    
+    // Mix in reflections (adjust 0.3 to control reflection strength)
+    const float reflectionStrength = 0.3;
+    vec3 reflection = envReflection * fresnel * reflectionStrength;
+    
+    vec3 finalColor = ambient + diffuse + specular + reflection;
     outColor = vec4(finalColor, 1.0);
 }
