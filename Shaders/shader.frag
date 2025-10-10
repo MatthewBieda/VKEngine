@@ -58,7 +58,7 @@ void main() {
 
     vec3 N = normalize(fragNormal);
     vec3 V = normalize(pc.cameraPos - fragPos);
-    vec3 albedo = texture(nonuniformEXT(tex[fragTextureIndex]),  fragTexCoord).rgb;
+    vec3 albedo = texture(nonuniformEXT(tex[fragTextureIndex]), fragTexCoord).rgb;
 
     vec3 ambient = 0.05 * albedo;
     vec3 diffuse = vec3(0.0);

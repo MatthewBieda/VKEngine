@@ -369,7 +369,7 @@ void GPUImage::createCubemap(const std::array<std::string, 6>& facePaths)
 		throw std::runtime_error("Failed to create cubemap image view");
 	}
 	nameObject(m_context.getDevice(), m_skyboxImageView, "ImageView_Cubemap");
-	std::cout << "Cubemap image created successfully" << std::endl;
+	std::cout << "Cubemap image view created successfully" << std::endl;
 
 	// Reuse texture sampler
 }

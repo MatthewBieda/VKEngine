@@ -4,10 +4,10 @@
 struct Object
 {
 	mat4 model;
+	uint meshIndex;
 	uint textureIndex;
 	uint padding0;
 	uint padding1;
-	uint padding2;
 };
 
 layout(set = 0, binding = 0) readonly buffer ObjectBuffer
@@ -32,8 +32,10 @@ layout(push_constant) uniform PushConstants
 } pushConstants;
 
 void main() {
-	mat4 modelMat = objectData.objects[gl_InstanceIndex].model;
-	fragTextureIndex = objectData.objects[gl_InstanceIndex].textureIndex;
+	Object obj = objectData.objects[gl_InstanceIndex];
+
+	mat4 modelMat = obj.model;
+	fragTextureIndex = obj.textureIndex;
 
 	vec4 worldPos = modelMat * vec4(inPosition, 1.0);
 

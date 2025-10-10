@@ -48,15 +48,23 @@ struct LightingData
 	alignas(16) PointLight pointsLights[16];
 } lights;
 
+struct Mesh
+{
+	uint32_t vertexOffset;
+	uint32_t indexOffset;
+	uint32_t indexCount;
+};
+std::vector<Mesh> meshes;
+
 struct ObjectData
 {
 	glm::mat4 model;
+	uint32_t meshIndex;
 	uint32_t textureIndex;
 	uint32_t padding0;
 	uint32_t padding1;
-	uint32_t padding2;
 };
-uint32_t maxObjects = 16;
+uint32_t maxObjects = 6;
 std::vector<ObjectData> objectData(maxObjects);
 
 struct AppState 
@@ -71,8 +79,8 @@ struct AppState
 
 Camera camera;
 
-std::vector<Vertex> vertices{};
-std::vector<uint32_t> indices{};
+std::vector<Vertex> allVertices{};
+std::vector<uint32_t> allIndices{};
 
 GLFWwindow* createWindow(AppState& appState);
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
@@ -80,22 +88,27 @@ void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
 void mouseCallback(GLFWwindow* window, double xpos, double ypos);
 void processInput(GLFWwindow* window, float deltaTime);
 
-void loadModel(const std::string& modelPath);
-void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, uint32_t textureIndex);
+uint32_t loadModel(const std::string& modelPath, std::vector<Vertex>& allVertices, std::vector<uint32_t>& allIndices);
+void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, uint32_t meshIndex, uint32_t textureIndex);
 void setupLighting(GPUBuffer& buffer, LightingData& lights);
 void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image);
 
 int main()
 {
-	loadModel("../Models/viking_room.obj");
+	uint32_t vikingMesh = loadModel("../Models/viking_room.obj", allVertices, allIndices);
+	uint32_t stanfordBunnyMesh = loadModel("../Models/stanfordBunny.obj", allVertices, allIndices);
 
 	GLFWwindow* window = createWindow(appState);
 	VulkanContext context(window);
 	Swapchain swapchain(window, context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
 
-	GPUBuffer buffer(context, commands, vertices, indices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
+	GPUBuffer buffer(context, commands, allVertices, allIndices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
 	buffer.createObjectBuffer(maxObjects);
+
+	buffer.createMeshBuffer(sizeof(Mesh), meshes.size());
+	buffer.updateMeshBuffer(meshes.data(), meshes.size() * sizeof(Mesh));
+
 	buffer.createLightingBuffer(sizeof(LightingData));
 
 	GPUImage image(context, commands);
@@ -133,7 +146,7 @@ int main()
 	VkDebugUtilsLabelEXT cmdLabel = makeLabel("Command List: ", 0.2f, 0.2f, 0.8f);
 
 	// Scene construction
-	setupSceneObjects(buffer, objectData, vikingRoomTex);
+	setupSceneObjects(buffer, objectData, vikingMesh, vikingRoomTex);
 	setupLighting(buffer, lights);
 
 	// Pre-render loop struct initialization
@@ -241,6 +254,13 @@ int main()
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	presentInfo.waitSemaphoreCount = 1;
 	presentInfo.swapchainCount = 1;
+
+	// Group objects by mesh
+	std::unordered_map<uint32_t, std::vector<uint32_t>> objectsByMesh;
+	for (uint32_t i = 0; i < maxObjects; ++i)
+	{
+		objectsByMesh[objectData[i].meshIndex].push_back(i);
+	}
 
 	// Main Render Loop
 	double lastTime{};
@@ -377,7 +397,21 @@ int main()
 		pc.enablePointLights = imgui.enablePointLights ? 1 : 0;
 
 		vkCmdPushConstants(cmd, scenePipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
-		vkCmdDrawIndexed(cmd, static_cast<uint32_t>(indices.size()), maxObjects, 0, 0, 0);
+
+		for (const auto& [meshIndex, instanceIndices] : objectsByMesh)
+		{
+			const Mesh& mesh = meshes[meshIndex];
+			vkCmdDrawIndexed(
+				cmd,
+				mesh.indexCount,
+				static_cast<uint32_t>(instanceIndices.size()), // Draw all instances of this mesh
+				mesh.indexOffset,
+				mesh.vertexOffset,
+				instanceIndices.front() // First instance ID
+			);
+		}
+
+		//vkCmdDrawIndexed(cmd, static_cast<uint32_t>(allIndices.size()), maxObjects, 0, 0, 0);
 
 		// Draw skybox (same render pass)
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeline.getPipeline());
@@ -458,8 +492,12 @@ int main()
 	return 0;
 }
 
-void loadModel(const std::string& modelPath)
+uint32_t loadModel(const std::string& modelPath, std::vector<Vertex>& allVertices, std::vector<uint32_t>& allIndices)
 {
+	Mesh mesh;
+	mesh.vertexOffset = static_cast<uint32_t>(allVertices.size());
+	mesh.indexOffset = static_cast<uint32_t>(allIndices.size());
+
 	tinyobj::attrib_t attrib;
 	std::vector<tinyobj::shape_t> shapes;
 	std::vector<tinyobj::material_t> materials;
@@ -500,19 +538,25 @@ void loadModel(const std::string& modelPath)
 
 			if (uniqueVertices.count(vertex) == 0)
 			{
-				uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
-				vertices.push_back(vertex);
+				uniqueVertices[vertex] = static_cast<uint32_t>(allVertices.size() - mesh.vertexOffset);
+				allVertices.push_back(vertex);
 			}
 
-			indices.push_back(uniqueVertices[vertex]);
+			allIndices.push_back(uniqueVertices[vertex]);
 		}
 	}
+
+	mesh.indexCount = static_cast<uint32_t>(allIndices.size()) - mesh.indexOffset;
+
+	uint32_t index = static_cast<uint32_t>(meshes.size());
+	meshes.push_back(mesh);
+	return index;
 }
 
-void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, uint32_t textureIndex)
+void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, uint32_t meshIndex, uint32_t textureIndex)
 {
-	const int gridSizeX = 4;
-	const int gridSizeY = 4;
+	const int gridSizeX = 2;
+	const int gridSizeY = 2;
 	const float spacing = 2.0f;
 
 	const float halfWidth = (gridSizeX - 1) * spacing * 0.5f;
@@ -534,9 +578,22 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, u
 			model = glm::rotate(model, glm::radians(270.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
 			objectData[objIndex].model = model;
+			objectData[objIndex].meshIndex = meshIndex;
 			objectData[objIndex].textureIndex = textureIndex;
 			objIndex++;
 		}
+	}
+
+	for (int i = 0; i < 2; ++i)
+	{
+		glm::vec3 pos(i * spacing - 2.0f, 0.0f, 5.0f);
+		glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
+		model = glm::scale(model, glm::vec3(0.5f));
+
+		objectData[objIndex].model = model;
+		objectData[objIndex].meshIndex = 1;
+		objectData[objIndex].textureIndex = 1;
+		objIndex++;
 	}
 
 	// Upload all matrices to the GPU
