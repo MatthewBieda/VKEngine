@@ -64,7 +64,7 @@ struct ObjectData
 	uint32_t padding0;
 	uint32_t padding1;
 };
-uint32_t maxObjects = 6;
+uint32_t maxObjects = 7;
 std::vector<ObjectData> objectData(maxObjects);
 
 struct AppState 
@@ -97,6 +97,7 @@ int main()
 {
 	uint32_t vikingMesh = loadModel("../Models/viking_room.obj", allVertices, allIndices);
 	uint32_t stanfordBunnyMesh = loadModel("../Models/stanfordBunny.obj", allVertices, allIndices);
+	uint32_t backpackMesh = loadModel("../Models/backpack.obj", allVertices, allIndices);
 
 	GLFWwindow* window = createWindow(appState);
 	VulkanContext context(window);
@@ -115,6 +116,7 @@ int main()
 	// Load object textures
 	uint32_t vikingRoomTex = image.loadTexture("../Textures/viking_room.png");
 	uint32_t shavedIceTex = image.loadTexture("../Textures/ice.jpg");
+	uint32_t guitarTex = image.loadTexture("../Textures/guitar.jpg");
 
 	// Create special images
 	image.createDepthImage(swapchain.getExtent().width, swapchain.getExtent().height);
@@ -584,6 +586,9 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, u
 		}
 	}
 
+	// override a texture to demo bindless
+	objectData[2].textureIndex = 1;
+
 	for (int i = 0; i < 2; ++i)
 	{
 		glm::vec3 pos(i * spacing - 2.0f, 0.0f, 5.0f);
@@ -595,6 +600,12 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, u
 		objectData[objIndex].textureIndex = 1;
 		objIndex++;
 	}
+
+	glm::vec3 pos(spacing - 6.0f, 0.0f, 5.0f);
+	glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
+	objectData[objIndex].model = model;
+	objectData[objIndex].meshIndex = 2;
+	objectData[objIndex].textureIndex = 2;
 
 	// Upload all matrices to the GPU
 	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData));

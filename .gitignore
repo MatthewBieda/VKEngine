@@ -8,7 +8,6 @@
 /*.VC.opendb
 
 # Ignore intermediate files
-*.obj
 *.tlog
 *.pch
 *.idb

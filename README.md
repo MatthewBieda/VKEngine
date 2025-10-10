@@ -59,3 +59,22 @@ It picks up where OGLRenderer left off.
 - Camera system, Dynamic Lighting & Blinn-Phong Shading
 
 [![VKEngine - Devlog 4](https://img.youtube.com/vi/oiAcDZiqOqE/0.jpg)](https://www.youtube.com/watch?v=oiAcDZiqOqE)
+
+## Devlog 5
+
+**Major Features:**
+- Skyboxes with cubemap sampling
+- Environment mapping with Fresnel reflections
+- Transparency support
+- Bindless texture system
+- Dynamic buffer updates
+- Per-mesh batched instancing
+
+**Implementation Details:**
+- Add Mesh struct to store vertex/index offsets and counts
+- Create mesh SSBO for GPU-side mesh metadata storage
+- Refactor ObjectData to reference mesh and texture indices
+- Update loadModel() to append geometry to shared vertex/index buffers
+- Group draw calls by mesh type for efficient batched rendering
+- Support arbitrary mesh/texture combinations per instance
+- Fix cross-frame lighting buffer synchronization with dynamic offsets
