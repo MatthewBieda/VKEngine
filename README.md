@@ -63,11 +63,11 @@ It picks up where OGLRenderer left off.
 ## Devlog 5
 
 **Major Features:**
-- Skyboxes with cubemap sampling
+- Skyboxes
 - Environment mapping with Fresnel reflections
-- Transparency support
+- Transparency support (alpha testing + alpha blending)
 - Bindless texture system
-- Dynamic buffer updates
+- Dynamic buffer updates (no more duplicate buffers!)
 - Per-mesh batched instancing
 
 **Implementation Details:**
@@ -78,4 +78,4 @@ It picks up where OGLRenderer left off.
 - Group draw calls by mesh type for efficient batched rendering
 - Support arbitrary mesh/texture combinations per instance
 - Fix cross-frame lighting buffer synchronization with dynamic offsets
-- Add new pipeline & shaders for Skybox
+- Add new pipelines (Skybox & Transparency) with separate render passes

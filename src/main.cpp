@@ -38,10 +38,10 @@ struct PushConstants
 	glm::mat4 view{};
 	glm::mat4 proj{};
 	alignas(16) glm::vec3 cameraPos;
-	uint32_t enableDirectionalLight;
-	uint32_t enablePointLights;
-	uint32_t enableAlphaTest;
-	uint32_t padding;
+	uint32_t enableDirectionalLight = 1;
+	uint32_t enablePointLights = 1;
+	uint32_t enableAlphaTest = 1;
+	uint32_t padding = 0;
 } pc;
 
 struct LightingData
@@ -67,7 +67,7 @@ struct ObjectData
 	uint32_t isTransparent;
 	uint32_t padding1;
 };
-uint32_t maxObjects = 9;
+uint32_t maxObjects = 1610;
 std::vector<ObjectData> objectData(maxObjects);
 
 struct AppState 
@@ -101,7 +101,8 @@ int main()
 	uint32_t vikingMesh = loadModel("../Models/viking_room.obj", allVertices, allIndices);
 	uint32_t stanfordBunnyMesh = loadModel("../Models/stanfordBunny.obj", allVertices, allIndices);
 	uint32_t backpackMesh = loadModel("../Models/backpack.obj", allVertices, allIndices);
-	uint32_t planeMesh = loadModel("../Models/plane.obj", allVertices, allIndices);
+	uint32_t quadMesh = loadModel("../Models/quad.obj", allVertices, allIndices);
+	uint32_t groundPlane = loadModel("../Models/groundPlane.obj", allVertices, allIndices);
 
 	GLFWwindow* window = createWindow(appState);
 	VulkanContext context(window);
@@ -117,12 +118,12 @@ int main()
 	buffer.createLightingBuffer(sizeof(LightingData));
 
 	GPUImage image(context, commands);
-	// Load object textures
 	uint32_t vikingRoomTex = image.loadTexture("../Textures/viking_room.png");
 	uint32_t shavedIceTex = image.loadTexture("../Textures/ice.jpg");
 	uint32_t guitarTex = image.loadTexture("../Textures/guitar.jpg");
 	uint32_t grassTex = image.loadTexture("../Textures/grass.png");
 	uint32_t transparentWindowTex = image.loadTexture("../Textures/transparentWindow.png");
+	uint32_t forestGroundTex = image.loadTexture("../Textures/forestGround.jpg");
 
 	// Create special images
 	image.createDepthImage(swapchain.getExtent().width, swapchain.getExtent().height);
@@ -604,70 +605,104 @@ uint32_t loadModel(const std::string& modelPath, std::vector<Vertex>& allVertice
 
 void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, uint32_t meshIndex, uint32_t textureIndex)
 {
-	const int gridSizeX = 2;
-	const int gridSizeY = 2;
-	const float spacing = 2.0f;
-
-	const float halfWidth = (gridSizeX - 1) * spacing * 0.5f;
-	const float halfHeight = (gridSizeY - 1) * spacing * 0.5f;
-
 	size_t objIndex = 0;
-	for (int y = 0; y < gridSizeY; ++y) {
-		for (int x = 0; x < gridSizeX; ++x) {
-			// "World-space" position centered at origin
+
+	// --- Houses ---
+	glm::vec3 housePositions[] = {
+		{-3.0f, 0.1f, -3.0f},
+		{3.0f, 0.1f, -2.0f},
+		{-2.0f, 0.1f, 2.0f},
+		{2.5f, 0.1f, 3.0f}
+	};
+
+	for (auto& pos : housePositions)
+	{
+		glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
+		model = glm::rotate(model, glm::radians(270.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+		model = glm::rotate(model, glm::radians(270.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+		objectData[objIndex].model = model;
+		objectData[objIndex].meshIndex = 0;  // Cube mesh for house
+		objectData[objIndex].textureIndex = 0; // House texture
+		objectData[objIndex].isTransparent = 0;
+		objIndex++;
+	}
+
+	// Overload one house texture to demonstrate bindless textures
+	objectData[3].textureIndex = 1;
+
+	// Guitar
+	glm::mat4 guitarTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	guitarTransform = glm::scale(guitarTransform, glm::vec3(0.5f));
+
+	objectData[objIndex].model = guitarTransform;
+	objectData[objIndex].meshIndex = 2;  // Ground Plane mesh
+	objectData[objIndex].textureIndex = 2; // Ground Plane texture
+	objectData[objIndex].isTransparent = 0; // Alpha blending
+	objIndex++;
+
+	// --- Ultra-dense grass tiles (alpha-tested) ---
+	const int gridSizeX = 40; // cover same area but denser
+	const int gridSizeZ = 40;
+	const float spacing = 0.25f; // very dense
+
+	for (int z = 0; z < gridSizeZ; ++z)
+	{
+		for (int x = 0; x < gridSizeX; ++x)
+		{
 			glm::vec3 pos(
-				x * spacing - halfWidth,
-				0.0f,
-				y * spacing - halfHeight
+				x * spacing - (gridSizeX - 1) * spacing * 0.5f,
+				0,
+				z * spacing - (gridSizeZ - 1) * spacing * 0.5f
 			);
 
-			glm::mat4 model = glm::mat4(1.0f);
-			model = glm::translate(model, pos);
-			model = glm::rotate(model, glm::radians(270.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-			model = glm::rotate(model, glm::radians(270.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+			glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
+
+			// Systematic variation: rotate by 0, 90 degrees depending on pattern
+			int pattern = (x + z) % 2;
+			float angle = pattern * glm::radians(90.0f);
+			model = glm::rotate(model, angle, glm::vec3(0.0f, 1.0f, 0.0f)); // apply rotation here
+
+			// Slight scaling pattern for more variation
+			float scale = 0.8f + 0.1f * ((x + z) % 3); // 0.8, 0.9, 1.0
+			model = glm::scale(model, glm::vec3(scale));
 
 			objectData[objIndex].model = model;
-			objectData[objIndex].meshIndex = meshIndex;
-			objectData[objIndex].textureIndex = textureIndex;
+			objectData[objIndex].meshIndex = 3;  // quad mesh
+			objectData[objIndex].textureIndex = 3; // grass texture
+			objectData[objIndex].isTransparent = 0;
 			objIndex++;
 		}
 	}
 
-	// override a texture to demo bindless
-	objectData[2].textureIndex = 1;
+	// --- Transparent windows ---
+	glm::vec3 windowPositions[] = {
+		{-3.0f, 1.0f, -2.5f},
+		{3.0f, 1.0f, -1.5f},
+		{-2.0f, 1.0f, 2.5f},
+		{2.5f, 1.0f, 3.5f}
+	};
 
-	for (int i = 0; i < 2; ++i)
+	for (auto& pos : windowPositions)
 	{
-		glm::vec3 pos(i * spacing - 2.0f, 0.0f, 5.0f);
 		glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-		model = glm::scale(model, glm::vec3(0.5f));
 
 		objectData[objIndex].model = model;
-		objectData[objIndex].meshIndex = 1;
-		objectData[objIndex].textureIndex = 1;
+		objectData[objIndex].meshIndex = 3;  // Quad mesh
+		objectData[objIndex].textureIndex = 4; // Transparent window texture
+		objectData[objIndex].isTransparent = 1; // Alpha blending
 		objIndex++;
 	}
 
-	glm::vec3 pos(spacing - 6.0f, 0.0f, 5.0f);
-	glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
+	// Ground plane
+	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.25f, 0.0f));
+	model = glm::scale(model, glm::vec3(0.5f, 1.0f, 0.5f));
+
 	objectData[objIndex].model = model;
-	objectData[objIndex].meshIndex = 2;
-	objectData[objIndex].textureIndex = 2;
+	objectData[objIndex].meshIndex = 4;  // Ground Plane mesh
+	objectData[objIndex].textureIndex = 5; // Ground Plane texture
+	objectData[objIndex].isTransparent = 0; // Alpha blending
 	objIndex++;
-
-	glm::vec3 pos2(spacing - 9.0f, 0.0f, 5.0f);
-	glm::mat4 model2 = glm::translate(glm::mat4(1.0f), pos2);
-	objectData[objIndex].model = model2;
-	objectData[objIndex].meshIndex = 3;
-	objectData[objIndex].textureIndex = 3;
-	objIndex++;
-
-	glm::vec3 pos3(spacing + 4.0f, 0.0f, 5.0f);
-	glm::mat4 model3 = glm::translate(glm::mat4(1.0f), pos3);
-	objectData[objIndex].model = model3;
-	objectData[objIndex].meshIndex = 3;
-	objectData[objIndex].textureIndex = 4;
-	objectData[objIndex].isTransparent = 1;
 
 	// Upload all matrices to the GPU
 	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData));
