@@ -10,10 +10,10 @@
 #include <iostream>
 #include <array>
 
-Pipeline::Pipeline(VulkanContext& context, Swapchain& swapchain, DescriptorManager& descriptors, const std::string& vertPath, const std::string& fragPath, VkFormat depthFormat, PipelineType type)
+Pipeline::Pipeline(VulkanContext& context, Swapchain& swapchain, DescriptorManager& descriptors, uint32_t pushConstantsSize, const std::string& vertPath, const std::string& fragPath, VkFormat depthFormat, PipelineType type)
 	: m_context(context), m_swapchain(swapchain), m_descriptors(descriptors)
 {
-	createPipeline(vertPath, fragPath, m_swapchain.getFormat(), depthFormat, type);
+	createPipeline(vertPath, fragPath, m_swapchain.getFormat(), depthFormat, type, pushConstantsSize);
 }
 
 Pipeline::~Pipeline()
@@ -80,7 +80,7 @@ std::vector<char> Pipeline::readFile(const std::string& filename)
 	return buffer;
 }
 
-void Pipeline::createPipeline(const std::string& vertPath, const std::string& fragPath, VkFormat colorFormat, VkFormat depthFormat, PipelineType type)
+void Pipeline::createPipeline(const std::string& vertPath, const std::string& fragPath, VkFormat colorFormat, VkFormat depthFormat, PipelineType type, uint32_t pushConstantsSize)
 {
 	std::vector<char> vertCode = readFile(vertPath);
 	std::vector<char> fragCode = readFile(fragPath);
@@ -151,6 +151,7 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 
 	VkPipelineMultisampleStateCreateInfo multisamplingInfo{};
 	multisamplingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisamplingInfo.alphaToCoverageEnable = VK_TRUE;
 	multisamplingInfo.sampleShadingEnable = VK_TRUE;
 	multisamplingInfo.minSampleShading = 0.2f;
 	multisamplingInfo.rasterizationSamples = DEFAULT_SAMPLES;
@@ -176,7 +177,7 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 	VkPushConstantRange pushConstantRange{};
 	pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 	pushConstantRange.offset = 0;
-	pushConstantRange.size = 148;
+	pushConstantRange.size = pushConstantsSize;
 
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -241,20 +242,31 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 
 	switch (type)
 	{
-	case PipelineType::Scene:
-		// Regular mesh pipeline uses default configuration
-		break;
+		case PipelineType::Scene:
+			// Regular mesh pipeline uses default configuration
+			break;
 
-	case PipelineType::Skybox:
-		// Skybox should be rendered behind everything and visible from inside the cube
-		rasterizerInfo.cullMode = VK_CULL_MODE_FRONT_BIT; // Draw inside of cube
-		depthStencil.depthWriteEnable = VK_FALSE; // Don't overwrite scene depth
-		depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
-		vertexInputInfo.vertexBindingDescriptionCount = 0;
-		vertexInputInfo.pVertexBindingDescriptions = nullptr;
-		vertexInputInfo.vertexAttributeDescriptionCount = 0;
-		vertexInputInfo.pVertexAttributeDescriptions = nullptr;
-		break;
+		case PipelineType::Skybox:
+			// Skybox should be rendered behind everything and visible from inside the cube
+			rasterizerInfo.cullMode = VK_CULL_MODE_FRONT_BIT; // Draw inside of cube
+			depthStencil.depthWriteEnable = VK_FALSE; // Don't overwrite scene depth
+			depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+			vertexInputInfo.vertexBindingDescriptionCount = 0;
+			vertexInputInfo.pVertexBindingDescriptions = nullptr;
+			vertexInputInfo.vertexAttributeDescriptionCount = 0;
+			vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+			break;
+
+		case PipelineType::Transparent:
+			// Disable depth writes, but keep depth testing
+			depthStencil.depthWriteEnable = VK_FALSE;
+
+			// Disable backface culling for glass
+			rasterizerInfo.cullMode = VK_CULL_MODE_NONE;
+
+			// Disable alpha to coverage (used for foliage, not smooth transparency)
+			multisamplingInfo.alphaToCoverageEnable = VK_FALSE;
+			break;
 	}
 
 	if (vkCreateGraphicsPipelines(m_context.getDevice(), VK_NULL_HANDLE, 1, &graphicsPipelineInfo, nullptr, &m_pipeline) != VK_SUCCESS)
@@ -272,6 +284,11 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 		case PipelineType::Skybox:
 			std::cout << "Graphics Pipeline (Skybox) created successfully" << std::endl;
 			nameObject(m_context.getDevice(), m_pipeline, "GraphicsPipeline_Skybox");
+			break;
+
+		case PipelineType::Transparent:
+			std::cout << "Graphics Pipeline (Transparent) created successfully" << std::endl;
+			nameObject(m_context.getDevice(), m_pipeline, "GraphicsPipeline_Transparent");
 			break;
 	}
 

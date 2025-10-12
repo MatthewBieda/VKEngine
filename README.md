@@ -78,3 +78,4 @@ It picks up where OGLRenderer left off.
 - Group draw calls by mesh type for efficient batched rendering
 - Support arbitrary mesh/texture combinations per instance
 - Fix cross-frame lighting buffer synchronization with dynamic offsets
+- Add new pipeline & shaders for Skybox

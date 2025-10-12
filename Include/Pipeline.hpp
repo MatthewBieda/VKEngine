@@ -13,13 +13,14 @@ class DescriptorManager;
 enum class PipelineType
 {
 	Scene,
-	Skybox
+	Skybox,
+	Transparent
 };
 
 class Pipeline
 {
 public:
-	Pipeline(VulkanContext& context, Swapchain& swapchain, DescriptorManager& descriptors, const std::string& vertPath, const std::string& fragPath, VkFormat depthFormat, PipelineType type = PipelineType::Scene);
+	Pipeline(VulkanContext& context, Swapchain& swapchain, DescriptorManager& descriptors, uint32_t pushConstantsSize, const std::string& vertPath, const std::string& fragPath, VkFormat depthFormat, PipelineType type = PipelineType::Scene);
 	~Pipeline();
 
 	Pipeline(const Pipeline&) = delete;
@@ -39,7 +40,7 @@ public:
 private:
 	VkShaderModule createShaderModule(const std::vector<char>& code);
 	std::vector<char> readFile(const std::string& filename);
-	void createPipeline(const std::string& vertPath, const std::string& fragPath, VkFormat colorFormat, VkFormat depthFormat, PipelineType type);
+	void createPipeline(const std::string& vertPath, const std::string& fragPath, VkFormat colorFormat, VkFormat depthFormat, PipelineType type, uint32_t pushConstantsSize);
 
 	VulkanContext& m_context;
 	Swapchain& m_swapchain;

@@ -3,6 +3,7 @@
 #include <vector>
 #include <array>
 #include <unordered_map>
+#include <algorithm>
 
 #include "glfw3.h"
 
@@ -36,9 +37,11 @@ struct PushConstants
 {
 	glm::mat4 view{};
 	glm::mat4 proj{};
-	glm::vec3 cameraPos;
+	alignas(16) glm::vec3 cameraPos;
 	uint32_t enableDirectionalLight;
 	uint32_t enablePointLights;
+	uint32_t enableAlphaTest;
+	uint32_t padding;
 } pc;
 
 struct LightingData
@@ -61,10 +64,10 @@ struct ObjectData
 	glm::mat4 model;
 	uint32_t meshIndex;
 	uint32_t textureIndex;
-	uint32_t padding0;
+	uint32_t isTransparent;
 	uint32_t padding1;
 };
-uint32_t maxObjects = 7;
+uint32_t maxObjects = 9;
 std::vector<ObjectData> objectData(maxObjects);
 
 struct AppState 
@@ -98,6 +101,7 @@ int main()
 	uint32_t vikingMesh = loadModel("../Models/viking_room.obj", allVertices, allIndices);
 	uint32_t stanfordBunnyMesh = loadModel("../Models/stanfordBunny.obj", allVertices, allIndices);
 	uint32_t backpackMesh = loadModel("../Models/backpack.obj", allVertices, allIndices);
+	uint32_t planeMesh = loadModel("../Models/plane.obj", allVertices, allIndices);
 
 	GLFWwindow* window = createWindow(appState);
 	VulkanContext context(window);
@@ -117,6 +121,8 @@ int main()
 	uint32_t vikingRoomTex = image.loadTexture("../Textures/viking_room.png");
 	uint32_t shavedIceTex = image.loadTexture("../Textures/ice.jpg");
 	uint32_t guitarTex = image.loadTexture("../Textures/guitar.jpg");
+	uint32_t grassTex = image.loadTexture("../Textures/grass.png");
+	uint32_t transparentWindowTex = image.loadTexture("../Textures/transparentWindow.png");
 
 	// Create special images
 	image.createDepthImage(swapchain.getExtent().width, swapchain.getExtent().height);
@@ -137,8 +143,9 @@ int main()
 	DescriptorManager descriptors(context, buffer, image);
 	descriptors.updateTextureArray(image.getTextureViews(), image.getSampler());
 
-	Pipeline scenePipeline(context, swapchain, descriptors, "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat(), PipelineType::Scene);
-	Pipeline skyboxPipeline(context, swapchain, descriptors, "../Shaders/skyboxvert.spv", "../Shaders/skyboxfrag.spv", image.getDepthFormat(), PipelineType::Skybox);
+	Pipeline scenePipeline(context, swapchain, descriptors, sizeof(PushConstants), "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat(), PipelineType::Scene);
+	Pipeline skyboxPipeline(context, swapchain, descriptors, sizeof(PushConstants), "../Shaders/skyboxvert.spv", "../Shaders/skyboxfrag.spv", image.getDepthFormat(), PipelineType::Skybox);
+	Pipeline transparentPipeline(context, swapchain, descriptors, sizeof(PushConstants), "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat(), PipelineType::Transparent);
 
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
 
@@ -369,7 +376,7 @@ int main()
 		VkPolygonMode polygonMode = imgui.enableWireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
 		VkCullModeFlags cullMode = imgui.enableBackfaceCulling ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
 
-		// Bind pipeline, set dynamic state, bind buffers & descriptors, issue draw
+		// 1. Opaque Pass (depth writes ON)
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scenePipeline.getPipeline());
 		scenePipeline.setViewport(cmd, viewport);
 		scenePipeline.setScissor(cmd, scissor);
@@ -397,6 +404,7 @@ int main()
 		pc.cameraPos = camera.Position;
 		pc.enableDirectionalLight = imgui.enableDirectionalLight ? 1 : 0;
 		pc.enablePointLights = imgui.enablePointLights ? 1 : 0;
+		pc.enableAlphaTest = 1;
 
 		vkCmdPushConstants(cmd, scenePipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
 
@@ -415,7 +423,7 @@ int main()
 
 		//vkCmdDrawIndexed(cmd, static_cast<uint32_t>(allIndices.size()), maxObjects, 0, 0, 0);
 
-		// Draw skybox (same render pass)
+		// 2. Skybox pass (Depth wrties OFF, test ON)
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeline.getPipeline());
 		skyboxPipeline.setViewport(cmd, viewport);
 		skyboxPipeline.setScissor(cmd, scissor);
@@ -430,6 +438,45 @@ int main()
 						   0, sizeof(PushConstants), &skyboxPC);
 
 		vkCmdDraw(cmd, 36, 1, 0, 0);
+
+		// 3. Transparent pass (Depth writes OFF, sorted back to front)
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, transparentPipeline.getPipeline());
+		std::vector<uint32_t> transparentObjects;
+		for (uint32_t i = 0; i < maxObjects; ++i)
+		{
+			if (objectData[i].isTransparent == 1)
+			{
+				transparentObjects.push_back(i);
+			}
+		}
+
+		// Sort by distance from camera (back to front)
+		std::sort(transparentObjects.begin(), transparentObjects.end(),
+			[&](uint32_t a, uint32_t b)
+			{
+				glm::vec3 posA = glm::vec3(objectData[a].model[3]);
+				glm::vec3 posB = glm::vec3(objectData[b].model[3]);
+				float distA = glm::length(camera.Position - posA);
+				float distB = glm::length(camera.Position - posB);
+				return distA > distB; // Far to near;
+			});
+
+		pc.enableAlphaTest = 0;
+		vkCmdPushConstants(cmd, transparentPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+
+		// 3.1 Draw back faces
+		transparentPipeline.setCullMode(cmd, VK_CULL_MODE_FRONT_BIT);
+		for (uint32_t objIndex : transparentObjects) {
+			const Mesh& mesh = meshes[objectData[objIndex].meshIndex];
+			vkCmdDrawIndexed(cmd, mesh.indexCount, 1, mesh.indexOffset, mesh.vertexOffset, objIndex);
+		}
+
+		// 3.2 Draw front faces
+		transparentPipeline.setCullMode(cmd, VK_CULL_MODE_BACK_BIT);
+		for (uint32_t objIndex : transparentObjects) {
+			const Mesh& mesh = meshes[objectData[objIndex].meshIndex];
+			vkCmdDrawIndexed(cmd, mesh.indexCount, 1, mesh.indexOffset, mesh.vertexOffset, objIndex);
+		}
 
 		vkCmdEndRendering(cmd);
 
@@ -606,6 +653,21 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, u
 	objectData[objIndex].model = model;
 	objectData[objIndex].meshIndex = 2;
 	objectData[objIndex].textureIndex = 2;
+	objIndex++;
+
+	glm::vec3 pos2(spacing - 9.0f, 0.0f, 5.0f);
+	glm::mat4 model2 = glm::translate(glm::mat4(1.0f), pos2);
+	objectData[objIndex].model = model2;
+	objectData[objIndex].meshIndex = 3;
+	objectData[objIndex].textureIndex = 3;
+	objIndex++;
+
+	glm::vec3 pos3(spacing + 4.0f, 0.0f, 5.0f);
+	glm::mat4 model3 = glm::translate(glm::mat4(1.0f), pos3);
+	objectData[objIndex].model = model3;
+	objectData[objIndex].meshIndex = 3;
+	objectData[objIndex].textureIndex = 4;
+	objectData[objIndex].isTransparent = 1;
 
 	// Upload all matrices to the GPU
 	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData));

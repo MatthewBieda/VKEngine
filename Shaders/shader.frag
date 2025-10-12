@@ -8,6 +8,7 @@ layout(push_constant) uniform PushConstants
     vec3 cameraPos;
     int enableDirectionalLight;
     int enablePointLights;
+    int enableAlphaTest;
 } pc;
 
 layout(set = 0, binding = 1) uniform sampler2D tex[];
@@ -58,7 +59,17 @@ void main() {
 
     vec3 N = normalize(fragNormal);
     vec3 V = normalize(pc.cameraPos - fragPos);
-    vec3 albedo = texture(nonuniformEXT(tex[fragTextureIndex]), fragTexCoord).rgb;
+
+    // Sample color and alpha
+    vec4 texSample = texture(nonuniformEXT(tex[fragTextureIndex]), fragTexCoord);
+    vec3 albedo = texSample.rgb;
+    float alpha = texSample.a;
+
+    // Alpha test
+    if (pc.enableAlphaTest != 0 && alpha < 0.5)     
+    {
+        discard;
+    }
 
     vec3 ambient = 0.05 * albedo;
     vec3 diffuse = vec3(0.0);
@@ -113,5 +124,5 @@ void main() {
     vec3 reflection = envReflection * fresnel * reflectionStrength;
     
     vec3 finalColor = ambient + diffuse + specular + reflection;
-    outColor = vec4(finalColor, 1.0);
+    outColor = vec4(finalColor, pc.enableAlphaTest != 0 ? 1.0 : alpha);
 }
