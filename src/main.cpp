@@ -92,7 +92,27 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos);
 void processInput(GLFWwindow* window, float deltaTime);
 
 uint32_t loadModel(const std::string& modelPath, std::vector<Vertex>& allVertices, std::vector<uint32_t>& allIndices);
-void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, uint32_t meshIndex, uint32_t textureIndex);
+
+enum class MeshType
+{
+	VikingRoom,
+	StanfordBunny,
+	Backpack,
+	Quad,
+	GroundPlane
+};
+
+enum class TextureType
+{
+	VikingRoom,
+	ShavedIce,
+	Backpack,
+	Grass,
+	TransparentWindow,
+	ForestGround
+};
+
+void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData);
 void setupLighting(GPUBuffer& buffer, LightingData& lights);
 void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image);
 
@@ -156,7 +176,7 @@ int main()
 	VkDebugUtilsLabelEXT cmdLabel = makeLabel("Command List: ", 0.2f, 0.2f, 0.8f);
 
 	// Scene construction
-	setupSceneObjects(buffer, objectData, vikingMesh, vikingRoomTex);
+	setupSceneObjects(buffer, objectData);
 	setupLighting(buffer, lights);
 
 	// Pre-render loop struct initialization
@@ -603,7 +623,7 @@ uint32_t loadModel(const std::string& modelPath, std::vector<Vertex>& allVertice
 	return index;
 }
 
-void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, uint32_t meshIndex, uint32_t textureIndex)
+void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 {
 	size_t objIndex = 0;
 
@@ -622,22 +642,22 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, u
 		model = glm::rotate(model, glm::radians(270.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
 		objectData[objIndex].model = model;
-		objectData[objIndex].meshIndex = 0;  // Cube mesh for house
-		objectData[objIndex].textureIndex = 0; // House texture
+		objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::VikingRoom);
+		objectData[objIndex].textureIndex = static_cast<uint32_t>(TextureType::VikingRoom);
 		objectData[objIndex].isTransparent = 0;
 		objIndex++;
 	}
 
 	// Overload one house texture to demonstrate bindless textures
-	objectData[3].textureIndex = 1;
+	objectData[3].textureIndex = static_cast<uint32_t>(TextureType::ShavedIce);
 
 	// Guitar
 	glm::mat4 guitarTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	guitarTransform = glm::scale(guitarTransform, glm::vec3(0.5f));
 
 	objectData[objIndex].model = guitarTransform;
-	objectData[objIndex].meshIndex = 2;  // Ground Plane mesh
-	objectData[objIndex].textureIndex = 2; // Ground Plane texture
+	objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::Backpack);
+	objectData[objIndex].textureIndex = static_cast<uint32_t>(TextureType::Backpack);
 	objectData[objIndex].isTransparent = 0; // Alpha blending
 	objIndex++;
 
@@ -668,8 +688,8 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, u
 			model = glm::scale(model, glm::vec3(scale));
 
 			objectData[objIndex].model = model;
-			objectData[objIndex].meshIndex = 3;  // quad mesh
-			objectData[objIndex].textureIndex = 3; // grass texture
+			objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::Quad);
+			objectData[objIndex].textureIndex = static_cast<uint32_t>(TextureType::Grass);
 			objectData[objIndex].isTransparent = 0;
 			objIndex++;
 		}
@@ -688,8 +708,8 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, u
 		glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
 
 		objectData[objIndex].model = model;
-		objectData[objIndex].meshIndex = 3;  // Quad mesh
-		objectData[objIndex].textureIndex = 4; // Transparent window texture
+		objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::Quad);
+		objectData[objIndex].textureIndex = static_cast<uint32_t>(TextureType::TransparentWindow);
 		objectData[objIndex].isTransparent = 1; // Alpha blending
 		objIndex++;
 	}
@@ -699,8 +719,8 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData, u
 	model = glm::scale(model, glm::vec3(0.5f, 1.0f, 0.5f));
 
 	objectData[objIndex].model = model;
-	objectData[objIndex].meshIndex = 4;  // Ground Plane mesh
-	objectData[objIndex].textureIndex = 5; // Ground Plane texture
+	objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::GroundPlane);
+	objectData[objIndex].textureIndex = static_cast<uint32_t>(TextureType::ForestGround);
 	objectData[objIndex].isTransparent = 0; // Alpha blending
 	objIndex++;
 
