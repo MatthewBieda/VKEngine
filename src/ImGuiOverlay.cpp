@@ -148,24 +148,14 @@ void ImGuiOverlay::drawUI()
 	{
 		return;
 	}
-
-	// Main menu bar
-	if (ImGui::BeginMainMenuBar())
-	{
-		if (ImGui::BeginMenu("Windows"))
-		{
-			ImGui::MenuItem("Metrics Window", nullptr, &showMetrics);
-			ImGui::EndMenu();
-		}
-		ImGui::EndMainMenuBar();
-	}
+	ImGuiID id = 0;
+	ImGui::DockSpaceOverViewport(id, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
 
 	// Control panel
 	ImGui::Begin("VKEngine Controls");
 
 	ImGui::Separator();
 
-	ImGui::ColorEdit3("Clear Color", &clearColor.x);
 	ImGui::Checkbox("Enable Depth Test", &enableDepthTest);
 	ImGui::Checkbox("Enable Wireframe", &enableWireframe);
 	ImGui::Checkbox("Enable backface culling", &enableBackfaceCulling);
@@ -176,11 +166,6 @@ void ImGuiOverlay::drawUI()
 	ImGui::Checkbox("Enable Point Lights", &enablePointLights);
 
 	ImGui::End();
-	
-	if (showMetrics)
-	{
-		ImGui::ShowMetricsWindow(&showMetrics);
-	}
 }
 
 void ImGuiOverlay::checkVkResult(VkResult err)

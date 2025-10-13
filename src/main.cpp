@@ -173,7 +173,10 @@ int main()
 	ImGuiOverlay imgui;
 	imgui.init(window, context, descriptors, swapchain.getFormat(), swapchain.getImageCount(), image.getMSAASamples());
 
-	VkDebugUtilsLabelEXT cmdLabel = makeLabel("Command List: ", 0.2f, 0.2f, 0.8f);
+	VkDebugUtilsLabelEXT opaquePassLabel = makeLabel("Opaque Pass", 0.0f, 1.0f, 0.0f);
+	VkDebugUtilsLabelEXT skyboxPassLabel = makeLabel("Skybox Pass", 0.3f, 0.7f, 1.0f);
+	VkDebugUtilsLabelEXT transparentPassLabel = makeLabel("Transparent Pass", 1.0f, 0.5f, 0.0f);
+	VkDebugUtilsLabelEXT imguiPassLabel = makeLabel("ImGui Pass", 1.0f, 0.0f, 1.0f);
 
 	// Scene construction
 	setupSceneObjects(buffer, objectData);
@@ -359,7 +362,6 @@ int main()
 		// Record commands
 		VkCommandBuffer cmd = commands.getCommandBuffer(currentFrame);
 		vkBeginCommandBuffer(cmd, &beginInfo);
-		vkCmdBeginDebugUtilsLabelEXT(cmd, &cmdLabel);
 
 		// Transition swapchain to attachment
 		preRenderBarrier.image = swapchain.getSwapchainImage(imageIndex);
@@ -368,8 +370,7 @@ int main()
 		// Color Attachment - Render to MSAA target, resolve to Swapchain
 		colorAttachment.imageView = image.getMSAAColorImageView(); // Render to MSAA target
 		colorAttachment.resolveImageView = swapchain.getSwapchainImageView(imageIndex); // Resolve to swapchain
-		const glm::vec3& cc = imgui.clearColor;
-		colorAttachment.clearValue = { {cc.r, cc.g, cc.b, 1.0f} };
+		//colorAttachment.clearValue = { {cc.r, cc.g, cc.b, 1.0f} };
 
 		// Depth Attachment - MSAA depth buffer
 		depthAttachment.imageView = image.getDepthImageView(); 
@@ -398,6 +399,7 @@ int main()
 		VkCullModeFlags cullMode = imgui.enableBackfaceCulling ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
 
 		// 1. Opaque Pass (depth writes ON)
+		vkCmdBeginDebugUtilsLabelEXT(cmd, &opaquePassLabel);
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scenePipeline.getPipeline());
 		scenePipeline.setViewport(cmd, viewport);
 		scenePipeline.setScissor(cmd, scissor);
@@ -441,10 +443,10 @@ int main()
 				instanceIndices.front() // First instance ID
 			);
 		}
-
-		//vkCmdDrawIndexed(cmd, static_cast<uint32_t>(allIndices.size()), maxObjects, 0, 0, 0);
+		vkCmdEndDebugUtilsLabelEXT(cmd);
 
 		// 2. Skybox pass (Depth wrties OFF, test ON)
+		vkCmdBeginDebugUtilsLabelEXT(cmd, &skyboxPassLabel);
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeline.getPipeline());
 		skyboxPipeline.setViewport(cmd, viewport);
 		skyboxPipeline.setScissor(cmd, scissor);
@@ -459,8 +461,10 @@ int main()
 						   0, sizeof(PushConstants), &skyboxPC);
 
 		vkCmdDraw(cmd, 36, 1, 0, 0);
+		vkCmdEndDebugUtilsLabelEXT(cmd);
 
 		// 3. Transparent pass (Depth writes OFF, sorted back to front)
+		vkCmdBeginDebugUtilsLabelEXT(cmd, &transparentPassLabel);
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, transparentPipeline.getPipeline());
 		std::vector<uint32_t> transparentObjects;
 		for (uint32_t i = 0; i < maxObjects; ++i)
@@ -499,9 +503,11 @@ int main()
 			vkCmdDrawIndexed(cmd, mesh.indexCount, 1, mesh.indexOffset, mesh.vertexOffset, objIndex);
 		}
 
+		vkCmdEndDebugUtilsLabelEXT(cmd);
 		vkCmdEndRendering(cmd);
 
 		// ImGui pass
+		vkCmdBeginDebugUtilsLabelEXT(cmd, &imguiPassLabel);
 		imgui.render();
 
 		imguiColorAttachment.imageView = swapchain.getSwapchainImageView(imageIndex);
@@ -510,13 +516,13 @@ int main()
 
 		vkCmdBeginRendering(cmd, &imguiRenderingInfo);
 		imgui.recordCommands(cmd);
+		vkCmdEndDebugUtilsLabelEXT(cmd);
 		vkCmdEndRendering(cmd);
 
 		// Transition to present
 		postRenderBarrier.image = swapchain.getSwapchainImage(imageIndex);
 		vkCmdPipelineBarrier2(cmd, &postDepInfo);
 
-		vkCmdEndDebugUtilsLabelEXT(cmd);
 		vkEndCommandBuffer(cmd);
 
 		// Submit

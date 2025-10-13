@@ -6,7 +6,6 @@
 
 #include "glm.hpp"
 
-// Forward declarations
 class VulkanContext;
 class DescriptorManager;
 
@@ -29,8 +28,6 @@ public:
 
 	void drawUI();
 
-	bool showMetrics = false;
-	glm::vec3 clearColor = { 0.1f, 0.5f, 1.0f };
 	inline static bool enableDepthTest = VK_TRUE;
 	inline static bool enableWireframe = VK_FALSE;
 	inline static bool enableBackfaceCulling = VK_FALSE;
