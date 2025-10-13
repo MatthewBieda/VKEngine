@@ -1,66 +1,80 @@
-VKEngine is a 3D rendering engine created with Vulkan and C++ 20.
+### VKEngine is a 3D rendering engine created with Vulkan and C++ 20.
 
-It picks up where OGLRenderer left off.
+### Current Features:
 
-**OGLRenderer Achievements:**
+- **3D Model and Texture Loading**  
+  Load and render 3D models with associated textures.
 
-- Physically Based Rendering (PBR) with Cook-Torrance BRDF, full glTF 2.0 material/texture support
-- Dynamic lighting & shadows: directional (sun), point, and spot lights with PCF shadow maps for sunlight
-- Image Based Lighting (IBL): skyboxes, HDR environment maps, irradiance & prefiltered radiance, BRDF LUT
-- Post-processing pipeline: HDR tone mapping, gamma correction, MSAA, exposure
-- Scene editor: Free camera, Instanced model loading, runtime editing through ImGui interface
+- **Skybox Rendering**  
+  Support for panoramic backgrounds and environment visuals.
 
-**Roadmap:**	
+- **Environment Mapping with Fresnel Reflections**  
+  Realistic reflective materials that respond to viewing angles.
 
-1. Achieve feature parity with OGLRenderer
-2. Adopt Modern Vulkan features! Dynamic Rendering, Bindless Descriptors, Buffer Device Address (BDA), Timeline Semaphores
+- **Transparency Support** *(Alpha Testing + Alpha Blending)*  
+  Supports both cutout materials (e.g., grass, foliage) and blended transparency (e.g., glass, windows).
 
-3. Then add the following features:
-    - Deferred Rendering / Tiled Deferred
-    - Cascading Shadow Maps
-    - Bloom/SSAO/SSR
-    - Skeletal Animations
-    - Spotlight & Point Light Shadows (Omnidirectional)
-    - Transparency
-    - Frustum Culling / Occlusion Culling
-    - Probe based Global Illumination
+- **MSAA (Multisample Anti-Aliasing)**  
+  Smooths jagged edges for improved visual quality.
 
-**Current Status:**
+- **Dynamic Lighting System (Directional / Point Lights)**  
+  Real-time lighting with multiple light types.
 
-- Load a 3D model (Obj) with a diffuse texture map
-- Instanced rendering allows any amount of duplicate meshes using 1 draw call
-- Free camera & UI interaction modes with seamless toggle
-- ImGui interface that allows editing of dynamic pipeline state
-- Dynamic Lighting with Directional & Point Lights using Blinn-Phong shading
-- Debugging functionality with labels/object names for RenderDoc/Nsight
-- MSAA & Swapchain recreation
+- **Blinn-Phong Shading Model**  
+  Classic, efficient lighting model for realistic highlights.
 
-## Devlog 0
+- **Fully Controllable 3D Camera**  
+  Free movement and orientation for interactive scenes.
+
+- **ImGui-Based Editor Interface**  
+  Integrated in-engine editor for debugging and scene control.
+
+- **Swapchain Recreation Handling**  
+  Robust handling of window resize and minimization.
+
+- **Mipmap Generation**  
+  Automatic mipmap creation for texture quality and performance.
+
+- **Instanced Rendering**  
+  Efficiently render large numbers of identical objects.
+
+- **Bindless Textures**  
+  Uses descriptor indexing to give shaders direct access to large arrays of textures, eliminating the need to bind textures individually per draw call.
+
+### Roadmap:	
+
+- Normal Maps
+- Frustum Culling
+- Skeletal Animations
+- Cascading Shadow Maps
+- Deferred Rendering (Tiled Deferred + Forward Pass)
+
+### Devlog 0
 - Motivations & Dependencies
 
 [![VKEngine - Devlog 0](https://img.youtube.com/vi/qB6mkcmTGvY/0.jpg)](https://www.youtube.com/watch?v=qB6mkcmTGvY)
 
-## Devlog 1
+### Devlog 1
 - Buffers & Textures
 
 [![VKEngine - Devlog 1](https://img.youtube.com/vi/XylJVviVezg/0.jpg)](https://www.youtube.com/watch?v=XylJVviVezg)
 
-## Devlog 2
+### Devlog 2
 - Loading a 3D Model and implementing Depth Testing/Mipmaps/MSAA
 
 [![VKEngine - Devlog 2](https://img.youtube.com/vi/BNghrnk86vo/0.jpg)](https://www.youtube.com/watch?v=BNghrnk86vo)
 
-## Devlog 3
+### Devlog 3
 - Debug Utils, ImGui integration, Dynamic pipeline state & Swapchain recreation
 
 [![VKEngine - Devlog 3](https://img.youtube.com/vi/0DAru1Xl0Jc/0.jpg)](https://www.youtube.com/watch?v=0DAru1Xl0Jc)
 
-## Devlog 4
+### Devlog 4
 - Camera system, Dynamic Lighting & Blinn-Phong Shading
 
 [![VKEngine - Devlog 4](https://img.youtube.com/vi/oiAcDZiqOqE/0.jpg)](https://www.youtube.com/watch?v=oiAcDZiqOqE)
 
-## Devlog 5
+### Devlog 5
 
 **Major Features:**
 - Skyboxes
