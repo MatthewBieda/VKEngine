@@ -288,6 +288,8 @@ int main()
 	presentInfo.waitSemaphoreCount = 1;
 	presentInfo.swapchainCount = 1;
 
+	VkDescriptorSet set = descriptors.getDescriptorSet();
+
 	// Group objects by mesh
 	std::unordered_map<uint32_t, std::vector<uint32_t>> objectsByMesh;
 	for (uint32_t i = 0; i < maxObjects; ++i)
@@ -304,7 +306,7 @@ int main()
 		float deltaTime = static_cast<float>(currentTime - lastTime);
 		lastTime = currentTime;
 
-		// Poll events (mouse callbacks)
+		// Input + UI
 		glfwPollEvents();
 		processInput(window, deltaTime);
 
@@ -370,7 +372,6 @@ int main()
 		// Color Attachment - Render to MSAA target, resolve to Swapchain
 		colorAttachment.imageView = image.getMSAAColorImageView(); // Render to MSAA target
 		colorAttachment.resolveImageView = swapchain.getSwapchainImageView(imageIndex); // Resolve to swapchain
-		//colorAttachment.clearValue = { {cc.r, cc.g, cc.b, 1.0f} };
 
 		// Depth Attachment - MSAA depth buffer
 		depthAttachment.imageView = image.getDepthImageView(); 
@@ -411,8 +412,6 @@ int main()
 		VkDeviceSize offsets[] = { 0 };
 		vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
 		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
-
-		VkDescriptorSet set = descriptors.getDescriptorSet();
 
 		// Calculate dynamic offset for current frame
 		uint32_t dynamicOffset = static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize());
@@ -545,7 +544,6 @@ int main()
 		{
 			appState.framebufferResized = false;
 			recreateSwapchainResources(context, swapchain, image);
-
 			appState.windowWidth = swapchain.getExtent().width;
 			appState.windowHeight = swapchain.getExtent().height;
 		}
@@ -557,11 +555,7 @@ int main()
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 
-	// Cleanup
-	// Wait for device to finish work
 	vkDeviceWaitIdle(context.getDevice());
-
-	// Destroy the GLFW window and terminate GLFW
 	glfwDestroyWindow(window);
 	glfwTerminate();
 

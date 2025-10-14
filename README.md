@@ -95,3 +95,5 @@
 - Support arbitrary mesh/texture combinations per instance
 - Fix cross-frame lighting buffer synchronization with dynamic offsets
 - Add new pipelines (Skybox & Transparency) with separate render passes
+
+[![VKEngine - Devlog 5](https://img.youtube.com/vi/82CNc7eAjmw/0.jpg)](https://www.youtube.com/watch?v=82CNc7eAjmw)
