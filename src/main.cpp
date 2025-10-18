@@ -4,6 +4,7 @@
 #include <array>
 #include <unordered_map>
 #include <algorithm>
+#include <filesystem>
 
 #include "glfw3.h"
 
@@ -37,37 +38,62 @@ struct PushConstants
 {
 	glm::mat4 view{};
 	glm::mat4 proj{};
-	alignas(16) glm::vec3 cameraPos;
+	alignas(16) glm::vec3 cameraPos{};
 	uint32_t enableDirectionalLight = 1;
 	uint32_t enablePointLights = 1;
 	uint32_t enableAlphaTest = 1;
-	uint32_t padding = 0;
+	uint32_t diffuseTextureIndex = 0;
+	float reflectionStrength = 0.0f;
 } pc;
 
 struct LightingData
 {
 	DirectionalLight dirLight;
 	int numPointLights;
-	alignas(16) PointLight pointsLights[16];
+	alignas(16) PointLight pointLights[16];
 } lights;
+
+struct Submesh
+{
+	uint32_t indexOffset;
+	uint32_t indexCount;
+	uint32_t materialIndex;
+	uint32_t padding = 0;
+};
 
 struct Mesh
 {
 	uint32_t vertexOffset;
-	uint32_t indexOffset;
-	uint32_t indexCount;
+	uint32_t vertexCount;
+	uint32_t submeshOffset;
+	uint32_t submeshCount;
 };
-std::vector<Mesh> meshes;
+
+struct Material
+{
+	uint32_t albedoTexture;
+	uint32_t normalTexture;
+	uint32_t specularTexture;
+
+	uint32_t twosided; // cull none, otherwise cull backface
+	uint32_t alphatest; // for foliage
+	uint32_t alphablending; // for windows
+
+	float shininess;
+	float reflectionStrength;
+	float specularStrength;
+	float alphaThreshold;
+};
 
 struct ObjectData
 {
 	glm::mat4 model;
 	uint32_t meshIndex;
-	uint32_t textureIndex;
-	uint32_t isTransparent;
-	uint32_t padding1;
+	uint32_t padding1 = 0 ;
+	uint32_t padding2 = 0;
+	uint32_t padding3 = 0;
 };
-uint32_t maxObjects = 1610;
+uint32_t maxObjects = 6;
 std::vector<ObjectData> objectData(maxObjects);
 
 struct AppState 
@@ -84,6 +110,9 @@ Camera camera;
 
 std::vector<Vertex> allVertices{};
 std::vector<uint32_t> allIndices{};
+std::vector<Mesh> allMeshes;
+std::vector<Submesh> allSubmeshes{};
+std::vector<Material> allMaterials{};
 
 GLFWwindow* createWindow(AppState& appState);
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
@@ -91,25 +120,15 @@ void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
 void mouseCallback(GLFWwindow* window, double xpos, double ypos);
 void processInput(GLFWwindow* window, float deltaTime);
 
-uint32_t loadModel(const std::string& modelPath, std::vector<Vertex>& allVertices, std::vector<uint32_t>& allIndices);
+uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass);
 
 enum class MeshType
 {
-	VikingRoom,
-	StanfordBunny,
-	Backpack,
-	Quad,
-	GroundPlane
-};
-
-enum class TextureType
-{
-	VikingRoom,
-	ShavedIce,
-	Backpack,
-	Grass,
-	TransparentWindow,
-	ForestGround
+	multiMeshOneMat,
+	instancedCubes,
+	alphaTestedGrass,
+	glassWindow,
+	sponza
 };
 
 void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData);
@@ -118,32 +137,12 @@ void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GP
 
 int main()
 {
-	uint32_t vikingMesh = loadModel("../Models/viking_room.obj", allVertices, allIndices);
-	uint32_t stanfordBunnyMesh = loadModel("../Models/stanfordBunny.obj", allVertices, allIndices);
-	uint32_t backpackMesh = loadModel("../Models/backpack.obj", allVertices, allIndices);
-	uint32_t quadMesh = loadModel("../Models/quad.obj", allVertices, allIndices);
-	uint32_t groundPlane = loadModel("../Models/groundPlane.obj", allVertices, allIndices);
-
 	GLFWwindow* window = createWindow(appState);
 	VulkanContext context(window);
 	Swapchain swapchain(window, context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
 
-	GPUBuffer buffer(context, commands, allVertices, allIndices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
-	buffer.createObjectBuffer(maxObjects);
-
-	buffer.createMeshBuffer(sizeof(Mesh), meshes.size());
-	buffer.updateMeshBuffer(meshes.data(), meshes.size() * sizeof(Mesh));
-
-	buffer.createLightingBuffer(sizeof(LightingData));
-
 	GPUImage image(context, commands);
-	uint32_t vikingRoomTex = image.loadTexture("../Textures/viking_room.png");
-	uint32_t shavedIceTex = image.loadTexture("../Textures/ice.jpg");
-	uint32_t guitarTex = image.loadTexture("../Textures/guitar.jpg");
-	uint32_t grassTex = image.loadTexture("../Textures/grass.png");
-	uint32_t transparentWindowTex = image.loadTexture("../Textures/transparentWindow.png");
-	uint32_t forestGroundTex = image.loadTexture("../Textures/forestGround.jpg");
 
 	// Create special images
 	image.createDepthImage(swapchain.getExtent().width, swapchain.getExtent().height);
@@ -160,6 +159,22 @@ int main()
 	};
 
 	image.createCubemap(skyBoxFaces);
+
+	// Load all models before creating GPUBuffer
+	//uint32_t sponzaTest = loadModel("../Models/Sponza/sponza.obj", allVertices, allIndices, allSubmeshes, image);
+	uint32_t multiMeshOneMat = loadModel("../Models/MultiMeshOneMat/multiMeshOneMat.obj", image);
+	uint32_t instancedCubes = loadModel("../Models/InstancedCubes/instancedCubes.obj", image);
+	uint32_t alphaTestedGrass = loadModel("../Models/Grass/untitled.obj", image);
+	uint32_t glassWindow = loadModel("../Models/GlassWindow/glassWindow.obj", image);
+	uint32_t sponza = loadModel("../Models/Sponza/sponza.obj", image);
+
+	GPUBuffer buffer(context, commands, allVertices, allIndices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
+	buffer.createObjectBuffer(maxObjects);
+
+	buffer.createMeshBuffer(sizeof(Mesh), allMeshes.size());
+	buffer.updateMeshBuffer(allMeshes.data(), allMeshes.size() * sizeof(Mesh));
+
+	buffer.createLightingBuffer(sizeof(LightingData));
 
 	DescriptorManager descriptors(context, buffer, image);
 	descriptors.updateTextureArray(image.getTextureViews(), image.getSampler());
@@ -291,10 +306,64 @@ int main()
 	VkDescriptorSet set = descriptors.getDescriptorSet();
 
 	// Group objects by mesh
-	std::unordered_map<uint32_t, std::vector<uint32_t>> objectsByMesh;
+	std::unordered_map<uint32_t, std::vector<uint32_t>> objectsByMesh;	
 	for (uint32_t i = 0; i < maxObjects; ++i)
 	{
 		objectsByMesh[objectData[i].meshIndex].push_back(i);
+	}
+
+	// Create draw command lists for opaque and transparent objects
+	struct DrawCommand
+	{
+		uint32_t indexCount;
+		uint32_t instanceCount;
+		uint32_t firstIndex;
+		int32_t vertexOffset;
+		uint32_t firstInstance;
+
+		Material material;
+		VkCullModeFlagBits cullMode;
+	};
+
+	std::vector<std::vector<DrawCommand>> opaqueDrawsByMaterial(allMaterials.size());
+	std::vector<std::vector<DrawCommand>> transparentDrawsByMaterial(allMaterials.size());
+
+	// Build draw command list grouped by material
+	for (const auto& [meshIndex, instanceIndices] : objectsByMesh)
+	{
+		const Mesh& mesh = allMeshes[meshIndex];
+
+		// Loop over submeshes within this mesh
+		for (uint32_t submeshIdx = 0; submeshIdx < mesh.submeshCount; ++submeshIdx)
+		{
+			const Submesh& submesh = allSubmeshes[mesh.submeshOffset + submeshIdx];
+			const Material& material = allMaterials[submesh.materialIndex];
+
+			DrawCommand cmd{};
+			cmd.indexCount = submesh.indexCount;
+			cmd.instanceCount = static_cast<uint32_t>(instanceIndices.size());
+			cmd.firstIndex = submesh.indexOffset;
+			cmd.vertexOffset = static_cast<uint32_t>(mesh.vertexOffset);
+			cmd.firstInstance = instanceIndices.front();
+			cmd.material = material;
+			cmd.cullMode = (material.twosided == 1) ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
+
+			// Split opaque vs transparent at build time
+			if (material.alphablending == 1)
+			{
+				transparentDrawsByMaterial[submesh.materialIndex].push_back(cmd);
+			}
+			else
+			{
+				opaqueDrawsByMaterial[submesh.materialIndex].push_back(cmd);
+			}
+		}
+	}
+
+	// Add this debug code before the render loop
+	std::unordered_map<uint32_t, int> materialUsage;
+	for (const auto& submesh : allSubmeshes) {
+		materialUsage[submesh.materialIndex]++;
 	}
 
 	// Main Render Loop
@@ -319,7 +388,7 @@ int main()
 
 		// Light 1: Large circle, clockwise
 		float radius1 = 3.0f;
-		lights.pointsLights[0].position = glm::vec4(
+		lights.pointLights[0].position = glm::vec4(
 			radius1 * cos(t),
 			2.0f,
 			radius1 * sin(t),
@@ -328,7 +397,7 @@ int main()
 
 		// Light 2: Smaller circle, counterclockwise
 		float radius2 = 1.0f;
-		lights.pointsLights[1].position = glm::vec4(
+		lights.pointLights[1].position = glm::vec4(
 			radius2 * cos(-t * 1.2f),
 			2.0f,
 			radius2 * sin(-t * 1.2f),
@@ -397,7 +466,6 @@ int main()
 		scissor.extent = swapchain.getExtent();
 
 		VkPolygonMode polygonMode = imgui.enableWireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
-		VkCullModeFlags cullMode = imgui.enableBackfaceCulling ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
 
 		// 1. Opaque Pass (depth writes ON)
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &opaquePassLabel);
@@ -406,7 +474,6 @@ int main()
 		scenePipeline.setScissor(cmd, scissor);
 		scenePipeline.setDepthTest(cmd, imgui.enableDepthTest);
 		scenePipeline.setPolygonMode(cmd, polygonMode);
-		scenePipeline.setCullMode(cmd, cullMode);
 
 		VkBuffer vertexBuffers[] = { buffer.getVertexBuffer() };
 		VkDeviceSize offsets[] = { 0 };
@@ -426,21 +493,36 @@ int main()
 		pc.cameraPos = camera.Position;
 		pc.enableDirectionalLight = imgui.enableDirectionalLight ? 1 : 0;
 		pc.enablePointLights = imgui.enablePointLights ? 1 : 0;
-		pc.enableAlphaTest = 1;
 
-		vkCmdPushConstants(cmd, scenePipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
-
-		for (const auto& [meshIndex, instanceIndices] : objectsByMesh)
+		// Loop over meshes
+		for (uint32_t matIdx = 0; matIdx < opaqueDrawsByMaterial.size(); ++matIdx)
 		{
-			const Mesh& mesh = meshes[meshIndex];
-			vkCmdDrawIndexed(
-				cmd,
-				mesh.indexCount,
-				static_cast<uint32_t>(instanceIndices.size()), // Draw all instances of this mesh
-				mesh.indexOffset,
-				mesh.vertexOffset,
-				instanceIndices.front() // First instance ID
-			);
+			const auto& drawCmds = opaqueDrawsByMaterial[matIdx];
+
+			if (drawCmds.empty())
+			{
+				continue;
+			}
+			
+			const Material& material = drawCmds[0].material;
+
+			// Set cull mode (same for all submeshes of this material)
+			scenePipeline.setCullMode(cmd, drawCmds[0].cullMode);
+
+			// Set alpha test
+			pc.enableAlphaTest = (material.alphatest == 1) ? 1 : 0;
+			pc.diffuseTextureIndex = static_cast<int>(material.albedoTexture);
+			pc.reflectionStrength = material.reflectionStrength;
+
+			// Push constants once per material
+			vkCmdPushConstants(cmd, scenePipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+
+			// Draw all submeshes of this material
+			for (const auto& drawCmd : drawCmds)
+			{
+				vkCmdDrawIndexed(cmd, drawCmd.indexCount, drawCmd.instanceCount, drawCmd.firstIndex, drawCmd.vertexOffset, drawCmd.firstInstance
+				);
+			}
 		}
 		vkCmdEndDebugUtilsLabelEXT(cmd);
 
@@ -465,41 +547,60 @@ int main()
 		// 3. Transparent pass (Depth writes OFF, sorted back to front)
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &transparentPassLabel);
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, transparentPipeline.getPipeline());
-		std::vector<uint32_t> transparentObjects;
-		for (uint32_t i = 0; i < maxObjects; ++i)
+
+		// Struct to hold per-instance transparent draw info
+		struct TransparentInstance {
+			uint32_t objIndex;
+			uint32_t materialIndex;
+			float distanceToCamera;
+		};
+
+		// Collect all transparent objects
+		std::vector<TransparentInstance> transparentObjects;
+
+		for (uint32_t matIdx = 0; matIdx < transparentDrawsByMaterial.size(); ++matIdx)
 		{
-			if (objectData[i].isTransparent == 1)
+			auto& drawCommands = transparentDrawsByMaterial[matIdx];
+			for (auto& cmd: drawCommands)
 			{
-				transparentObjects.push_back(i);
+				for (uint32_t i = 0; i < cmd.instanceCount; ++i)
+				{
+					uint32_t objIndex = cmd.firstInstance + i;
+					glm::vec3 objPos = glm::vec3(objectData[objIndex].model[3]);
+
+					float dist = glm::length(camera.Position - objPos);
+					transparentObjects.push_back({ objIndex, matIdx, dist });
+				}
 			}
 		}
 
-		// Sort by distance from camera (back to front)
+		// Sort back to front
 		std::sort(transparentObjects.begin(), transparentObjects.end(),
-			[&](uint32_t a, uint32_t b)
-			{
-				glm::vec3 posA = glm::vec3(objectData[a].model[3]);
-				glm::vec3 posB = glm::vec3(objectData[b].model[3]);
-				float distA = glm::length(camera.Position - posA);
-				float distB = glm::length(camera.Position - posB);
-				return distA > distB; // Far to near;
+			[](const TransparentInstance& a, const TransparentInstance& b) {
+				return a.distanceToCamera > b.distanceToCamera;
 			});
 
-		pc.enableAlphaTest = 0;
-		vkCmdPushConstants(cmd, transparentPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+		// Draw transparent objects individually
+		for (const auto& inst: transparentObjects)
+		{
+			const auto& drawCmd = transparentDrawsByMaterial[inst.materialIndex][0];
+			const auto& mat = drawCmd.material;
 
-		// 3.1 Draw back faces
-		transparentPipeline.setCullMode(cmd, VK_CULL_MODE_FRONT_BIT);
-		for (uint32_t objIndex : transparentObjects) {
-			const Mesh& mesh = meshes[objectData[objIndex].meshIndex];
-			vkCmdDrawIndexed(cmd, mesh.indexCount, 1, mesh.indexOffset, mesh.vertexOffset, objIndex);
-		}
+			pc.enableAlphaTest = mat.alphatest;
+			pc.diffuseTextureIndex = static_cast<int>(mat.albedoTexture);
+			pc.reflectionStrength = mat.reflectionStrength;
 
-		// 3.2 Draw front faces
-		transparentPipeline.setCullMode(cmd, VK_CULL_MODE_BACK_BIT);
-		for (uint32_t objIndex : transparentObjects) {
-			const Mesh& mesh = meshes[objectData[objIndex].meshIndex];
-			vkCmdDrawIndexed(cmd, mesh.indexCount, 1, mesh.indexOffset, mesh.vertexOffset, objIndex);
+			vkCmdPushConstants(cmd, transparentPipeline.getLayout(),
+				VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+				0, sizeof(pc), &pc);
+
+			// Back faces
+			transparentPipeline.setCullMode(cmd, VK_CULL_MODE_FRONT_BIT);
+			vkCmdDrawIndexed(cmd, drawCmd.indexCount, 1, drawCmd.firstIndex, drawCmd.vertexOffset, inst.objIndex);
+
+			// Front faces
+			transparentPipeline.setCullMode(cmd, VK_CULL_MODE_BACK_BIT);
+			vkCmdDrawIndexed(cmd, drawCmd.indexCount, 1, drawCmd.firstIndex, drawCmd.vertexOffset, inst.objIndex);
 		}
 
 		vkCmdEndDebugUtilsLabelEXT(cmd);
@@ -562,167 +663,237 @@ int main()
 	return 0;
 }
 
-uint32_t loadModel(const std::string& modelPath, std::vector<Vertex>& allVertices, std::vector<uint32_t>& allIndices)
+uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 {
-	Mesh mesh;
-	mesh.vertexOffset = static_cast<uint32_t>(allVertices.size());
-	mesh.indexOffset = static_cast<uint32_t>(allIndices.size());
+	namespace fs = std::filesystem;
 
-	tinyobj::attrib_t attrib;
-	std::vector<tinyobj::shape_t> shapes;
-	std::vector<tinyobj::material_t> materials;
-	std::unordered_map<Vertex, uint32_t> uniqueVertices{};
-	std::string warn;
-	std::string err;
+	fs::path objFilePath(modelPath);
+	fs::path objDir = objFilePath.parent_path();
 
-	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, modelPath.c_str())) 
+	tinyobj::ObjReaderConfig reader_config;
+	reader_config.mtl_search_path = objDir.string();
+	tinyobj::ObjReader reader;
+
+	if (!reader.ParseFromFile(modelPath, reader_config))
 	{
-		throw std::runtime_error(err);
+		if (!reader.Error().empty())
+		{
+			std::cerr << "TinyObjReader: " << reader.Error();
+		}
+		exit(1);
 	}
 
-	for (const auto& shape : shapes)
+	if (!reader.Warning().empty())
 	{
-		for (const tinyobj::index_t& index : shape.mesh.indices)
+		std::cout << "TinyObjReader: " << reader.Warning();
+	}
+
+	auto& attrib = reader.GetAttrib();
+	auto& shapes = reader.GetShapes();
+	auto& materials = reader.GetMaterials();
+
+	Mesh mesh{};
+	mesh.vertexOffset = static_cast<uint32_t>(allVertices.size());
+	mesh.submeshOffset = static_cast<uint32_t>(allSubmeshes.size());
+
+	std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+
+	// Debug: print what we loaded
+	std::cout << "\n=== MODEL DEBUG INFO ===" << std::endl;
+	std::cout << "File: " << modelPath << std::endl;
+	std::cout << "Shapes: " << shapes.size() << std::endl;
+	std::cout << "Materials: " << materials.size() << std::endl;
+
+	// Print each shape
+	for (size_t s = 0; s < shapes.size(); ++s) {
+		std::cout << "\nShape [" << s << "]: " << shapes[s].name << std::endl;
+		std::cout << "  Indices: " << shapes[s].mesh.indices.size() << std::endl;
+		std::cout << "  Material IDs: " << shapes[s].mesh.material_ids.size() << std::endl;
+
+		if (shapes[s].mesh.material_ids.size() > 0) {
+			std::cout << "  First material ID: " << shapes[s].mesh.material_ids[0] << std::endl;
+			if (shapes[s].mesh.material_ids[0] < materials.size()) {
+				std::cout << "  First material name: " << materials[shapes[s].mesh.material_ids[0]].name << std::endl;
+			}
+		}
+	}
+
+	// Print each material
+	for (size_t m = 0; m < materials.size(); ++m) {
+		std::cout << "\nMaterial [" << m << "]: " << materials[m].name << std::endl;
+		if (!materials[m].diffuse_texname.empty()) {
+			std::cout << "  Diffuse texture: " << materials[m].diffuse_texname << std::endl;
+		}
+		if (!materials[m].bump_texname.empty()) {
+			std::cout << "  Bump/Normal texture: " << materials[m].bump_texname << std::endl;
+		}
+	}
+	std::cout << "========================\n" << std::endl;
+
+	// record where new materials will start in global array
+	uint32_t baseMaterialIndex = static_cast<uint32_t>(allMaterials.size());
+
+	// iterate shapes
+	for (const auto& shape : shapes) {
+		Submesh sub{};
+		sub.indexOffset = static_cast<uint32_t>(allIndices.size());
+
+		// local material index from tinyobj
+		uint32_t matIndex = UINT32_MAX;
+		if (!shape.mesh.material_ids.empty() && shape.mesh.material_ids[0] >= 0) {
+			matIndex = static_cast<uint32_t>(shape.mesh.material_ids[0]);
+		}
+
+		// convert local index to global index by adding base offset (if valid)
+		if (matIndex != UINT32_MAX)
 		{
+			matIndex += baseMaterialIndex;
+		}
+		sub.materialIndex = matIndex;
+
+		for (const tinyobj::index_t& index : shape.mesh.indices) {
 			Vertex vertex{};
 
-			vertex.pos =
-			{
+			vertex.pos = {
 				attrib.vertices[3 * index.vertex_index + 0],
 				attrib.vertices[3 * index.vertex_index + 1],
 				attrib.vertices[3 * index.vertex_index + 2]
 			};
 
-			vertex.normal =
-			{
-				attrib.normals[3 * index.normal_index + 0],
-				attrib.normals[3 * index.normal_index + 1],
-				attrib.normals[3 * index.normal_index + 2]
-			};
+			if (index.normal_index >= 0) {
+				vertex.normal = {
+					attrib.normals[3 * index.normal_index + 0],
+					attrib.normals[3 * index.normal_index + 1],
+					attrib.normals[3 * index.normal_index + 2]
+				};
+			}
 
-			vertex.texCoord = 
-			{
-				attrib.texcoords[2 * index.texcoord_index + 0],
-				1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
-			};
+			if (index.texcoord_index >= 0) {
+				vertex.texCoord = {
+					attrib.texcoords[2 * index.texcoord_index + 0],
+					1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+				};
+			}
 
-			if (uniqueVertices.count(vertex) == 0)
-			{
+			//vertex.tangent = glm::vec3(0.0f);
+
+			if (!uniqueVertices.contains(vertex)) {
 				uniqueVertices[vertex] = static_cast<uint32_t>(allVertices.size() - mesh.vertexOffset);
 				allVertices.push_back(vertex);
 			}
 
 			allIndices.push_back(uniqueVertices[vertex]);
 		}
+
+		sub.indexCount = static_cast<uint32_t>(allIndices.size()) - sub.indexOffset;
+		allSubmeshes.push_back(sub);
 	}
 
-	mesh.indexCount = static_cast<uint32_t>(allIndices.size()) - mesh.indexOffset;
+	mesh.vertexCount = static_cast<uint32_t>(allVertices.size() - mesh.vertexOffset);
+	mesh.submeshCount = static_cast<uint32_t>(allSubmeshes.size()) - mesh.submeshOffset;
 
-	uint32_t index = static_cast<uint32_t>(meshes.size());
-	meshes.push_back(mesh);
-	return index;
+	uint32_t meshIndex = static_cast<uint32_t>(allMeshes.size());
+	allMeshes.push_back(mesh);
+
+	// Load material data
+	for (const auto& mtl : materials)
+	{
+		Material mat{};
+
+		if (!mtl.diffuse_texname.empty())
+		{
+			fs::path texPath = objDir / mtl.diffuse_texname;
+			mat.albedoTexture = imageClass.loadTexture(texPath.string());
+		}
+		else
+		{
+			mat.albedoTexture = 0;
+		}
+
+		mat.normalTexture = 0;
+		mat.specularTexture = 0;
+
+		if (mtl.dissolve < 1.0f)
+		{	
+			// Alpha-blended transparency (e.g. glass)
+			mat.twosided = 1;
+			mat.alphatest = 0;
+			mat.alphablending = 1;
+		}
+		else if (!mtl.alpha_texname.empty())
+		{
+			// Alpha-tested transparency (e.g. grass, fences)
+			mat.twosided = 1;
+			mat.alphatest = 1;
+			mat.alphablending = 0;
+		}
+		else
+		{
+			// Fully opaque
+			mat.twosided = 0;
+			mat.alphatest = 0;
+			mat.alphablending = 0;
+		}
+
+		mat.shininess = mtl.shininess;
+		mat.reflectionStrength = 0.0f;
+		mat.specularStrength = 0.5f;
+		mat.alphaThreshold = 0.5f;
+
+		allMaterials.push_back(mat);
+	}
+
+	std::cout << "Loaded mesh [" << meshIndex << "] with " << mesh.submeshCount
+		<< " submeshes" << std::endl;
+
+	return meshIndex;
 }
 
 void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 {
 	size_t objIndex = 0;
 
-	// --- Houses ---
-	glm::vec3 housePositions[] = {
-		{-3.0f, 0.1f, -3.0f},
-		{3.0f, 0.1f, -2.0f},
-		{-2.0f, 0.1f, 2.0f},
-		{2.5f, 0.1f, 3.0f}
-	};
-
-	for (auto& pos : housePositions)
-	{
-		glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-		model = glm::rotate(model, glm::radians(270.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-		model = glm::rotate(model, glm::radians(270.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-
-		objectData[objIndex].model = model;
-		objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::VikingRoom);
-		objectData[objIndex].textureIndex = static_cast<uint32_t>(TextureType::VikingRoom);
-		objectData[objIndex].isTransparent = 0;
-		objIndex++;
-	}
-
-	// Overload one house texture to demonstrate bindless textures
-	objectData[3].textureIndex = static_cast<uint32_t>(TextureType::ShavedIce);
-
-	// Guitar
-	glm::mat4 guitarTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	guitarTransform = glm::scale(guitarTransform, glm::vec3(0.5f));
-
-	objectData[objIndex].model = guitarTransform;
-	objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::Backpack);
-	objectData[objIndex].textureIndex = static_cast<uint32_t>(TextureType::Backpack);
-	objectData[objIndex].isTransparent = 0; // Alpha blending
-	objIndex++;
-
-	// --- Ultra-dense grass tiles (alpha-tested) ---
-	const int gridSizeX = 40; // cover same area but denser
-	const int gridSizeZ = 40;
-	const float spacing = 0.25f; // very dense
-
-	for (int z = 0; z < gridSizeZ; ++z)
-	{
-		for (int x = 0; x < gridSizeX; ++x)
-		{
-			glm::vec3 pos(
-				x * spacing - (gridSizeX - 1) * spacing * 0.5f,
-				0,
-				z * spacing - (gridSizeZ - 1) * spacing * 0.5f
-			);
-
-			glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-
-			// Systematic variation: rotate by 0, 90 degrees depending on pattern
-			int pattern = (x + z) % 2;
-			float angle = pattern * glm::radians(90.0f);
-			model = glm::rotate(model, angle, glm::vec3(0.0f, 1.0f, 0.0f)); // apply rotation here
-
-			// Slight scaling pattern for more variation
-			float scale = 0.8f + 0.1f * ((x + z) % 3); // 0.8, 0.9, 1.0
-			model = glm::scale(model, glm::vec3(scale));
-
-			objectData[objIndex].model = model;
-			objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::Quad);
-			objectData[objIndex].textureIndex = static_cast<uint32_t>(TextureType::Grass);
-			objectData[objIndex].isTransparent = 0;
-			objIndex++;
-		}
-	}
-
-	// --- Transparent windows ---
-	glm::vec3 windowPositions[] = {
-		{-3.0f, 1.0f, -2.5f},
-		{3.0f, 1.0f, -1.5f},
-		{-2.0f, 1.0f, 2.5f},
-		{2.5f, 1.0f, 3.5f}
-	};
-
-	for (auto& pos : windowPositions)
-	{
-		glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-
-		objectData[objIndex].model = model;
-		objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::Quad);
-		objectData[objIndex].textureIndex = static_cast<uint32_t>(TextureType::TransparentWindow);
-		objectData[objIndex].isTransparent = 1; // Alpha blending
-		objIndex++;
-	}
-
-	// Ground plane
-	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.25f, 0.0f));
-	model = glm::scale(model, glm::vec3(0.5f, 1.0f, 0.5f));
+	glm::vec3 pos{ 0.0f, 0.0f, 0.0f };
+	glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
 
 	objectData[objIndex].model = model;
-	objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::GroundPlane);
-	objectData[objIndex].textureIndex = static_cast<uint32_t>(TextureType::ForestGround);
-	objectData[objIndex].isTransparent = 0; // Alpha blending
+	objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::multiMeshOneMat);
 	objIndex++;
+
+	pos = { 5.0f, 0.0f, 0.0f };
+	model = glm::translate(glm::mat4(1.0f), pos);
+
+	objectData[objIndex].model = model;
+	objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::instancedCubes);;
+	objIndex++;
+
+	pos = { -5.0f, 5.0f, 0.0f };
+	model = glm::translate(glm::mat4(1.0f), pos);
+
+	objectData[objIndex].model = model;
+	objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::alphaTestedGrass);
+	objIndex++;
+
+	pos = { 0.0f, 5.0f, 5.0f };
+	model = glm::translate(glm::mat4(1.0f), pos);
+
+	objectData[objIndex].model = model;
+	objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::glassWindow);
+	objIndex++;
+
+	pos = { 0.0f, 5.0f, 7.0f };
+	model = glm::translate(glm::mat4(1.0f), pos);
+
+	objectData[objIndex].model = model;
+	objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::glassWindow);
+	objIndex++;
+
+	pos = { 30.0f, 0.0f, 0.0f };
+	model = glm::translate(glm::mat4(1.0f), pos);
+	model = glm::scale(model, glm::vec3(0.01f)); //scale sponza
+
+	objectData[objIndex].model = model;
+	objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::sponza);
 
 	// Upload all matrices to the GPU
 	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData));
@@ -733,13 +904,13 @@ void setupLighting(GPUBuffer& buffer, LightingData& lights)
 	lights.dirLight.direction = glm::vec4(-1.0f, -1.0f, -1.0f, 0.0f);
 	lights.dirLight.color = glm::vec4(1.0f);
 
-	lights.pointsLights[0].position = glm::vec4(0.0f, 2.0f, 0.0f, 1.0f);
-	lights.pointsLights[0].color = glm::vec4(5.0f, 0.0f, 0.0f, 1.0f);
-	lights.pointsLights[0].radius = 5.0f;
+	lights.pointLights[0].position = glm::vec4(0.0f, 2.0f, 0.0f, 1.0f);
+	lights.pointLights[0].color = glm::vec4(5.0f, 0.0f, 0.0f, 1.0f);
+	lights.pointLights[0].radius = 5.0f;
 
-	lights.pointsLights[1].position = glm::vec4(0.0f, 2.0f, 0.0f, 1.0f);
-	lights.pointsLights[1].color = glm::vec4(0.0f, 5.0f, 0.0f, 1.0f);
-	lights.pointsLights[1].radius = 5.0f;
+	lights.pointLights[1].position = glm::vec4(0.0f, 2.0f, 0.0f, 1.0f);
+	lights.pointLights[1].color = glm::vec4(0.0f, 5.0f, 0.0f, 1.0f);
+	lights.pointLights[1].radius = 5.0f;
 
 	lights.numPointLights = 2;
 	buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);

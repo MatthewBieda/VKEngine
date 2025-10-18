@@ -158,7 +158,6 @@ void ImGuiOverlay::drawUI()
 
 	ImGui::Checkbox("Enable Depth Test", &enableDepthTest);
 	ImGui::Checkbox("Enable Wireframe", &enableWireframe);
-	ImGui::Checkbox("Enable backface culling", &enableBackfaceCulling);
 
 	ImGui::Separator();
 	ImGui::Text("Lighting");

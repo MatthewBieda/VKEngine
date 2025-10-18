@@ -9,6 +9,8 @@ layout(push_constant) uniform PushConstants
     int enableDirectionalLight;
     int enablePointLights;
     int enableAlphaTest;
+    int diffuseTextureIndex;
+    float reflectionStrength;
 } pc;
 
 layout(set = 0, binding = 1) uniform sampler2D tex[];
@@ -44,13 +46,12 @@ layout(std430, set = 0, binding = 2) readonly buffer Lighting
 layout(location = 0) in vec3 fragPos;
 layout(location = 1) in vec3 fragNormal;
 layout(location = 2) in vec2 fragTexCoord;
-layout(location = 3) flat in uint fragTextureIndex;
 
 layout(location = 0) out vec4 outColor;
 
-// Material properties
+// Material constants
 const float shininess = 32.0f;
-const float specularStrength = 0.5f;
+const float specularStrength = 0.3f;
 
 void main() {
 	// Debug: visualize normals as colors
@@ -61,12 +62,12 @@ void main() {
     vec3 V = normalize(pc.cameraPos - fragPos);
 
     // Sample color and alpha
-    vec4 texSample = texture(nonuniformEXT(tex[fragTextureIndex]), fragTexCoord);
+    vec4 texSample = texture(nonuniformEXT(tex[pc.diffuseTextureIndex]), fragTexCoord);
     vec3 albedo = texSample.rgb;
     float alpha = texSample.a;
 
     // Alpha test
-    if (pc.enableAlphaTest != 0 && alpha < 0.9)
+    if (pc.enableAlphaTest != 0 && alpha < 0.5)
     {
         discard;
     }
@@ -112,16 +113,20 @@ void main() {
         };
     }
 
-    // Environment reflections (simple version)
-    vec3 R = reflect(-V, N); // Reflect view direction around normal
-    vec3 envReflection = texture(skybox, R).rgb;
-    
-    // Fresnel approximation - objects reflect more at grazing angles
-    float fresnel = pow(1.0 - max(dot(N, V), 0.0), 5.0);
-    
-    // Mix in reflections (adjust 0.3 to control reflection strength)
-    const float reflectionStrength = 0.3;
-    vec3 reflection = envReflection * fresnel * reflectionStrength;
+    // Only apply reflections if reflectionStrength > 0
+    vec3 reflection = vec3(0.0);
+
+    if (pc.reflectionStrength > 0.0)
+    {
+        // Environment reflections
+        vec3 R = reflect(-V, N); // Reflect view direction around normal
+        vec3 envReflection = texture(skybox, R).rgb;
+
+        // Fresnel approximation - objects reflect more at grazing angles
+        float fresnel = pow(1.0 - max(dot(N, V), 0.0), 5.0);
+
+        reflection = envReflection * fresnel * pc.reflectionStrength;
+    }
     
     vec3 finalColor = ambient + diffuse + specular + reflection;
     outColor = vec4(finalColor, pc.enableAlphaTest != 0 ? 1.0 : alpha);
