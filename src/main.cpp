@@ -89,12 +89,11 @@ struct ObjectData
 {
 	glm::mat4 model;
 	uint32_t meshIndex;
-	uint32_t padding1 = 0 ;
+	uint32_t padding1 = 0;
 	uint32_t padding2 = 0;
 	uint32_t padding3 = 0;
 };
-uint32_t maxObjects = 6;
-std::vector<ObjectData> objectData(maxObjects);
+std::vector<ObjectData> objectData{};
 
 struct AppState 
 {
@@ -137,18 +136,18 @@ void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GP
 
 int main()
 {
+	// Initialize Vulkan core
 	GLFWwindow* window = createWindow(appState);
 	VulkanContext context(window);
 	Swapchain swapchain(window, context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
 
+	// Create GPU Image resources
 	GPUImage image(context, commands);
-
-	// Create special images
 	image.createDepthImage(swapchain.getExtent().width, swapchain.getExtent().height);
 	image.createMSAAColorImage(swapchain.getExtent().width, swapchain.getExtent().height, swapchain.getFormat());
 
-	// Load cubemap
+	// Load textures and models
 	std::array<std::string, 6> skyBoxFaces = {
 		"../Textures/Skyboxes/YokohamaCity/posx.jpg",
 		"../Textures/Skyboxes/YokohamaCity/negx.jpg",
@@ -157,25 +156,23 @@ int main()
 		"../Textures/Skyboxes/YokohamaCity/posz.jpg",
 		"../Textures/Skyboxes/YokohamaCity/negz.jpg",
 	};
-
 	image.createCubemap(skyBoxFaces);
 
-	// Load all models before creating GPUBuffer
-	//uint32_t sponzaTest = loadModel("../Models/Sponza/sponza.obj", allVertices, allIndices, allSubmeshes, image);
 	uint32_t multiMeshOneMat = loadModel("../Models/MultiMeshOneMat/multiMeshOneMat.obj", image);
 	uint32_t instancedCubes = loadModel("../Models/InstancedCubes/instancedCubes.obj", image);
 	uint32_t alphaTestedGrass = loadModel("../Models/Grass/untitled.obj", image);
 	uint32_t glassWindow = loadModel("../Models/GlassWindow/glassWindow.obj", image);
 	uint32_t sponza = loadModel("../Models/Sponza/sponza.obj", image);
 
+	// Create buffers and populate scene
 	GPUBuffer buffer(context, commands, allVertices, allIndices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
-	buffer.createObjectBuffer(maxObjects);
+	setupSceneObjects(buffer, objectData);
+	setupLighting(buffer, lights);
 
 	buffer.createMeshBuffer(sizeof(Mesh), allMeshes.size());
 	buffer.updateMeshBuffer(allMeshes.data(), allMeshes.size() * sizeof(Mesh));
 
-	buffer.createLightingBuffer(sizeof(LightingData));
-
+	// Setup descriptors and pipelines
 	DescriptorManager descriptors(context, buffer, image);
 	descriptors.updateTextureArray(image.getTextureViews(), image.getSampler());
 
@@ -183,19 +180,16 @@ int main()
 	Pipeline skyboxPipeline(context, swapchain, descriptors, sizeof(PushConstants), "../Shaders/skyboxvert.spv", "../Shaders/skyboxfrag.spv", image.getDepthFormat(), PipelineType::Skybox);
 	Pipeline transparentPipeline(context, swapchain, descriptors, sizeof(PushConstants), "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat(), PipelineType::Transparent);
 
+	// Setup syncronization and UI
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
-
 	ImGuiOverlay imgui;
 	imgui.init(window, context, descriptors, swapchain.getFormat(), swapchain.getImageCount(), image.getMSAASamples());
 
+	//Debug labels
 	VkDebugUtilsLabelEXT opaquePassLabel = makeLabel("Opaque Pass", 0.0f, 1.0f, 0.0f);
 	VkDebugUtilsLabelEXT skyboxPassLabel = makeLabel("Skybox Pass", 0.3f, 0.7f, 1.0f);
 	VkDebugUtilsLabelEXT transparentPassLabel = makeLabel("Transparent Pass", 1.0f, 0.5f, 0.0f);
 	VkDebugUtilsLabelEXT imguiPassLabel = makeLabel("ImGui Pass", 1.0f, 0.0f, 1.0f);
-
-	// Scene construction
-	setupSceneObjects(buffer, objectData);
-	setupLighting(buffer, lights);
 
 	// Pre-render loop struct initialization
 	VkCommandBufferBeginInfo beginInfo{};
@@ -307,7 +301,7 @@ int main()
 
 	// Group objects by mesh
 	std::unordered_map<uint32_t, std::vector<uint32_t>> objectsByMesh;	
-	for (uint32_t i = 0; i < maxObjects; ++i)
+	for (uint32_t i = 0; i < objectData.size(); ++i)
 	{
 		objectsByMesh[objectData[i].meshIndex].push_back(i);
 	}
@@ -358,12 +352,6 @@ int main()
 				opaqueDrawsByMaterial[submesh.materialIndex].push_back(cmd);
 			}
 		}
-	}
-
-	// Add this debug code before the render loop
-	std::unordered_map<uint32_t, int> materialUsage;
-	for (const auto& submesh : allSubmeshes) {
-		materialUsage[submesh.materialIndex]++;
 	}
 
 	// Main Render Loop
@@ -606,7 +594,7 @@ int main()
 		vkCmdEndDebugUtilsLabelEXT(cmd);
 		vkCmdEndRendering(cmd);
 
-		// ImGui pass
+		// 4. UI pass
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &imguiPassLabel);
 		imgui.render();
 
@@ -647,10 +635,6 @@ int main()
 			recreateSwapchainResources(context, swapchain, image);
 			appState.windowWidth = swapchain.getExtent().width;
 			appState.windowHeight = swapchain.getExtent().height;
-		}
-		else if (result != VK_SUCCESS)
-		{
-			throw std::runtime_error("Failed to present swapchain image!");
 		}
 
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
@@ -697,38 +681,6 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 	mesh.submeshOffset = static_cast<uint32_t>(allSubmeshes.size());
 
 	std::unordered_map<Vertex, uint32_t> uniqueVertices{};
-
-	// Debug: print what we loaded
-	std::cout << "\n=== MODEL DEBUG INFO ===" << std::endl;
-	std::cout << "File: " << modelPath << std::endl;
-	std::cout << "Shapes: " << shapes.size() << std::endl;
-	std::cout << "Materials: " << materials.size() << std::endl;
-
-	// Print each shape
-	for (size_t s = 0; s < shapes.size(); ++s) {
-		std::cout << "\nShape [" << s << "]: " << shapes[s].name << std::endl;
-		std::cout << "  Indices: " << shapes[s].mesh.indices.size() << std::endl;
-		std::cout << "  Material IDs: " << shapes[s].mesh.material_ids.size() << std::endl;
-
-		if (shapes[s].mesh.material_ids.size() > 0) {
-			std::cout << "  First material ID: " << shapes[s].mesh.material_ids[0] << std::endl;
-			if (shapes[s].mesh.material_ids[0] < materials.size()) {
-				std::cout << "  First material name: " << materials[shapes[s].mesh.material_ids[0]].name << std::endl;
-			}
-		}
-	}
-
-	// Print each material
-	for (size_t m = 0; m < materials.size(); ++m) {
-		std::cout << "\nMaterial [" << m << "]: " << materials[m].name << std::endl;
-		if (!materials[m].diffuse_texname.empty()) {
-			std::cout << "  Diffuse texture: " << materials[m].diffuse_texname << std::endl;
-		}
-		if (!materials[m].bump_texname.empty()) {
-			std::cout << "  Bump/Normal texture: " << materials[m].bump_texname << std::endl;
-		}
-	}
-	std::cout << "========================\n" << std::endl;
 
 	// record where new materials will start in global array
 	uint32_t baseMaterialIndex = static_cast<uint32_t>(allMaterials.size());
@@ -851,51 +803,62 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 
 void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 {
-	size_t objIndex = 0;
-
 	glm::vec3 pos{ 0.0f, 0.0f, 0.0f };
 	glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
+	uint32_t meshIndex = static_cast<uint32_t>(MeshType::multiMeshOneMat);
 
-	objectData[objIndex].model = model;
-	objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::multiMeshOneMat);
-	objIndex++;
+	objectData.push_back({ model, meshIndex });
 
 	pos = { 5.0f, 0.0f, 0.0f };
 	model = glm::translate(glm::mat4(1.0f), pos);
+	meshIndex = static_cast<uint32_t>(MeshType::instancedCubes);
 
-	objectData[objIndex].model = model;
-	objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::instancedCubes);;
-	objIndex++;
+	objectData.push_back({ model, meshIndex });
 
-	pos = { -5.0f, 5.0f, 0.0f };
-	model = glm::translate(glm::mat4(1.0f), pos);
+	glm::vec3 grassPositions[] = {
+		{ -8.0f, 0.0f, -3.0f },
+		{ -6.0f, 0.0f, 2.0f },
+		{ -4.0f, 0.0f, -5.0f },
+		{ -2.0f, 0.0f, 3.0f },
+		{ 2.0f, 0.0f, -4.0f },
+		{ 4.0f, 0.0f, 1.0f },
+		{ 6.0f, 0.0f, -2.0f },
+		{ 8.0f, 0.0f, 4.0f },
+		{ -7.0f, 0.0f, 5.0f },
+		{ 3.0f, 0.0f, -6.0f },
+		{ -3.0f, 0.0f, -1.0f },
+		{ 7.0f, 0.0f, -5.0f },
+	};
 
-	objectData[objIndex].model = model;
-	objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::alphaTestedGrass);
-	objIndex++;
+	for (const auto& grassPos : grassPositions) {
+		glm::mat4 grassModel = glm::translate(glm::mat4(1.0f), grassPos);
+		model = grassModel;
+		meshIndex = static_cast<uint32_t>(MeshType::alphaTestedGrass);
+
+		objectData.push_back({ model, meshIndex });
+	}
 
 	pos = { 0.0f, 5.0f, 5.0f };
 	model = glm::translate(glm::mat4(1.0f), pos);
+	meshIndex = static_cast<uint32_t>(MeshType::glassWindow);
 
-	objectData[objIndex].model = model;
-	objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::glassWindow);
-	objIndex++;
+	objectData.push_back({ model, meshIndex });
 
 	pos = { 0.0f, 5.0f, 7.0f };
 	model = glm::translate(glm::mat4(1.0f), pos);
+	meshIndex = static_cast<uint32_t>(MeshType::glassWindow);
 
-	objectData[objIndex].model = model;
-	objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::glassWindow);
-	objIndex++;
+	objectData.push_back({ model, meshIndex });
 
 	pos = { 30.0f, 0.0f, 0.0f };
 	model = glm::translate(glm::mat4(1.0f), pos);
 	model = glm::scale(model, glm::vec3(0.01f)); //scale sponza
 
-	objectData[objIndex].model = model;
-	objectData[objIndex].meshIndex = static_cast<uint32_t>(MeshType::sponza);
+	meshIndex = static_cast<uint32_t>(MeshType::sponza);
 
-	// Upload all matrices to the GPU
+	objectData.push_back({ model, meshIndex });
+
+	buffer.createObjectBuffer(objectData.size());
 	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData));
 }
 
@@ -913,6 +876,8 @@ void setupLighting(GPUBuffer& buffer, LightingData& lights)
 	lights.pointLights[1].radius = 5.0f;
 
 	lights.numPointLights = 2;
+
+	buffer.createLightingBuffer(sizeof(LightingData));
 	buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);
 }
 
