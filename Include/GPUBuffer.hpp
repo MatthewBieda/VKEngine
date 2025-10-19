@@ -22,6 +22,7 @@ public:
 	void createObjectBuffer(size_t maxObjects);
 	VkBuffer getObjectBuffer() const { return m_objectBuffer; }
 	size_t getObjectBufferSize() const { return m_objectBufferSize; }
+	VkDeviceSize getAlignedObjectSize() const { return m_alignedObjectSize; }
 	void* getObjectBufferMapped() const { return m_objectBufferMapped; }
 
 	void createLightingBuffer(VkDeviceSize lightingBufferSize);
@@ -29,7 +30,7 @@ public:
 	VkDeviceSize getLightingBufferSize() const { return m_lightingBufferSize; }
 	VkDeviceSize getAlignedLightingSize() const { return m_alignedLightingSize; }
 
-	void updateObjectBuffer(const void* data, size_t size);
+	void updateObjectBuffer(const void* data, size_t size, uint32_t currentFrame);
 	void updateLightingBuffer(const void* data, size_t size, uint32_t currentFrame);
 
 private:
@@ -47,6 +48,7 @@ private:
 	VmaAllocation m_objectAllocation = VK_NULL_HANDLE;
 	void* m_objectBufferMapped = nullptr;
 	VkDeviceSize m_objectBufferSize = 0;
+	VkDeviceSize m_alignedObjectSize = 0;
 
 	// Lighting SSBO
 	VkBuffer m_lightingBuffer = VK_NULL_HANDLE;

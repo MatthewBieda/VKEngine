@@ -51,7 +51,7 @@ void DescriptorManager::createDescriptorSetLayout()
 
 	// Storage buffer for per-object data
 	bindings[0].binding = 0;
-	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
 	bindings[0].descriptorCount = 1;
 	bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
@@ -102,10 +102,9 @@ void DescriptorManager::createDescriptorSetLayout()
 
 void DescriptorManager::createDescriptorPool()
 {
-	std::array<VkDescriptorPoolSize, 3> poolSizes{};
-	poolSizes[0] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 }; // per-instance data
-	poolSizes[1] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1 }; // Lighting (dynamic)
-	poolSizes[2] = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1001 }; // object texture + skybox
+	std::array<VkDescriptorPoolSize, 2> poolSizes{};
+	poolSizes[0] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 2 }; // Per-instance data + lighting
+	poolSizes[1] = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1001 }; // object texture + skybox
 
 	VkDescriptorPoolCreateInfo poolInfo{};
 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -162,7 +161,7 @@ void DescriptorManager::createDescriptorSet()
 	persistentWrites[0].dstSet = m_descriptorSet;
 	persistentWrites[0].dstBinding = 0;
 	persistentWrites[0].descriptorCount = 1;
-	persistentWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	persistentWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
 	persistentWrites[0].pBufferInfo = &ssboInfo;
 
 	// Lighting SSBO

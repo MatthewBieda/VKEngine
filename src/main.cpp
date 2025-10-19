@@ -385,10 +385,20 @@ int main()
 			1.0f
 		);
 
+		// Update object transforms
+		for (int i = 1; i <= 3; ++i)
+		{
+			glm::vec3 pos = glm::vec3(i - 1, 5.0f, -0.5f);
+			objectData[i].model = glm::translate(glm::mat4(1.0f), pos);
+			objectData[i].model = glm::rotate(objectData[i].model, t, glm::vec3(0.0f, 1.0f, 0.0f));
+			objectData[i].model = glm::rotate(objectData[i].model, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+		}
+
 		// Wait for previous frame to finish
 		vkWaitForFences(context.getDevice(), 1, sync.getInFlightFencePtr(currentFrame), VK_TRUE, UINT64_MAX);
 
-		// update lighting buffer
+		// Push per-frame data to the GPU
+		buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData), currentFrame);
 		buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);
 
 		// Acquire next swapchain image
@@ -462,8 +472,12 @@ int main()
 		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
 		// Calculate dynamic offset for current frame
-		uint32_t dynamicOffset = static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize());
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scenePipeline.getLayout(), 0, 1, &set, 1, &dynamicOffset);
+		std::array<uint32_t, 2> dynamicOffsets = {
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedObjectSize()),
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize())
+		};
+
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scenePipeline.getLayout(), 0, 1, &set, 2, dynamicOffsets.data());
 
 		pc.view = camera.GetViewMatrix();
 		pc.proj = glm::perspective(glm::radians(camera.Zoom),
@@ -817,7 +831,7 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 	}
 
 	buffer.createObjectBuffer(objectData.size());
-	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData));
+	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData), currentFrame);
 }
 
 void setupLighting(GPUBuffer& buffer, LightingData& lights)

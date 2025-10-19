@@ -22,18 +22,20 @@ GPUBuffer::~GPUBuffer()
 	vmaDestroyBuffer(m_context.getAllocator(), m_lightingBuffer, m_lightingAllocation);
 }
 
-void GPUBuffer::updateObjectBuffer(const void* data, size_t size)
+void GPUBuffer::updateObjectBuffer(const void* data, size_t size, uint32_t currentFrame)
 {
-	if (size > m_objectBufferSize)
+	if (size > m_alignedObjectSize)
 	{
 		throw std::runtime_error("Object buffer overflow!");
 	}
-	memcpy(m_objectBufferMapped, data, size);
+
+	VkDeviceSize offset = currentFrame * m_alignedObjectSize;
+	memcpy((char*)m_objectBufferMapped + offset, data, size);
 }
 
 void GPUBuffer::updateLightingBuffer(const void* data, size_t size, uint32_t currentFrame)
 {
-	if (size > m_lightingBufferSize)
+	if (size > m_alignedLightingSize)
 	{
 		throw std::runtime_error("Light buffer overflow!");
 	}
@@ -160,7 +162,6 @@ void GPUBuffer::createLightingBuffer(VkDeviceSize lightingBufferSize)
 	{
 		throw std::runtime_error("Failed to create lighting SSBO");
 	}
-	std::cout << "Lighting SSBO created successfully" << std::endl;
 
 	// Get mapped pointer
 	VmaAllocationInfo allocInfoDetails{};
@@ -168,15 +169,22 @@ void GPUBuffer::createLightingBuffer(VkDeviceSize lightingBufferSize)
 	m_lightingBufferMapped = allocInfoDetails.pMappedData;
 
 	nameObject(m_context.getDevice(), m_lightingBuffer, "LightingBuffer_SSBO");
+	std::cout << "Lighting dynamic SSBO created successfully" << std::endl;
 }
 
 void GPUBuffer::createObjectBuffer(size_t maxObjects)
 {
-	m_objectBufferSize *= maxObjects;
+	VkPhysicalDeviceProperties props;
+	vkGetPhysicalDeviceProperties(m_context.getPhysicalDevice(), &props);
+
+	VkDeviceSize alignment = props.limits.minStorageBufferOffsetAlignment;
+	VkDeviceSize singleObjectBufferSize = m_objectBufferSize * maxObjects;
+
+	m_alignedObjectSize = (singleObjectBufferSize + alignment - 1) & ~(alignment - 1);
 
 	VkBufferCreateInfo bufferInfo{};
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufferInfo.size = m_objectBufferSize;
+	bufferInfo.size = m_alignedObjectSize * m_maxFramesInFlight;
 	bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -188,14 +196,13 @@ void GPUBuffer::createObjectBuffer(size_t maxObjects)
 	{
 		throw std::runtime_error("Failed to create object SSBO");
 	}
-	std::cout << "Object SSBO created successfully (" << maxObjects << " objects)" << std::endl;
 
-	// Get mapped pointer
 	VmaAllocationInfo allocInfoDetails{};
 	vmaGetAllocationInfo(m_context.getAllocator(), m_objectAllocation, &allocInfoDetails);
 	m_objectBufferMapped = allocInfoDetails.pMappedData;
 
 	nameObject(m_context.getDevice(), m_objectBuffer, "ObjectBuffer_SSBO");
+	std::cout << "Object dynamic SSBO created successfully (" << maxObjects << " objects)" << std::endl;
 }
 
 void GPUBuffer::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
