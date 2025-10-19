@@ -67,7 +67,7 @@ void main() {
     float alpha = texSample.a;
 
     // Alpha test
-    if (pc.enableAlphaTest != 0 && alpha < 0.5)
+    if (pc.enableAlphaTest != 0 && alpha < 0.8)
     {
         discard;
     }

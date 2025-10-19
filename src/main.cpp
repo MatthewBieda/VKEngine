@@ -97,8 +97,8 @@ std::vector<ObjectData> objectData{};
 
 struct AppState 
 {
-	uint32_t windowWidth = 1920;
-	uint32_t windowHeight = 1080;
+	uint32_t windowWidth = 2560;
+	uint32_t windowHeight = 1440;
 	bool framebufferResized = false;
 	bool cursorEnabled = false;
 	bool spacePressedLastFrame = false;
@@ -109,7 +109,7 @@ Camera camera;
 
 std::vector<Vertex> allVertices{};
 std::vector<uint32_t> allIndices{};
-std::vector<Mesh> allMeshes;
+std::vector<Mesh> allMeshes{};
 std::vector<Submesh> allSubmeshes{};
 std::vector<Material> allMaterials{};
 
@@ -123,11 +123,9 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass);
 
 enum class MeshType
 {
-	multiMeshOneMat,
-	instancedCubes,
-	alphaTestedGrass,
-	glassWindow,
-	sponza
+	Sponza,
+	AlphaTestedGrass,
+	GlassWindow
 };
 
 void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData);
@@ -158,11 +156,9 @@ int main()
 	};
 	image.createCubemap(skyBoxFaces);
 
-	uint32_t multiMeshOneMat = loadModel("../Models/MultiMeshOneMat/multiMeshOneMat.obj", image);
-	uint32_t instancedCubes = loadModel("../Models/InstancedCubes/instancedCubes.obj", image);
+	uint32_t sponza = loadModel("../Models/Sponza/sponza.obj", image);
 	uint32_t alphaTestedGrass = loadModel("../Models/Grass/untitled.obj", image);
 	uint32_t glassWindow = loadModel("../Models/GlassWindow/glassWindow.obj", image);
-	uint32_t sponza = loadModel("../Models/Sponza/sponza.obj", image);
 
 	// Create buffers and populate scene
 	GPUBuffer buffer(context, commands, allVertices, allIndices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
@@ -803,60 +799,25 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 
 void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 {
-	glm::vec3 pos{ 0.0f, 0.0f, 0.0f };
-	glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-	uint32_t meshIndex = static_cast<uint32_t>(MeshType::multiMeshOneMat);
+	glm::vec3 pos;
+	glm::mat4 model;
+	uint32_t meshIndex;
 
-	objectData.push_back({ model, meshIndex });
-
-	pos = { 5.0f, 0.0f, 0.0f };
+	// Sponza
+	pos = { 0.0f, 0.0f, 0.0f };
 	model = glm::translate(glm::mat4(1.0f), pos);
-	meshIndex = static_cast<uint32_t>(MeshType::instancedCubes);
-
+	meshIndex = static_cast<uint32_t>(MeshType::Sponza);
 	objectData.push_back({ model, meshIndex });
 
-	glm::vec3 grassPositions[] = {
-		{ -8.0f, 0.0f, -3.0f },
-		{ -6.0f, 0.0f, 2.0f },
-		{ -4.0f, 0.0f, -5.0f },
-		{ -2.0f, 0.0f, 3.0f },
-		{ 2.0f, 0.0f, -4.0f },
-		{ 4.0f, 0.0f, 1.0f },
-		{ 6.0f, 0.0f, -2.0f },
-		{ 8.0f, 0.0f, 4.0f },
-		{ -7.0f, 0.0f, 5.0f },
-		{ 3.0f, 0.0f, -6.0f },
-		{ -3.0f, 0.0f, -1.0f },
-		{ 7.0f, 0.0f, -5.0f },
-	};
-
-	for (const auto& grassPos : grassPositions) {
-		glm::mat4 grassModel = glm::translate(glm::mat4(1.0f), grassPos);
-		model = grassModel;
-		meshIndex = static_cast<uint32_t>(MeshType::alphaTestedGrass);
-
+	// Windows
+	for (float i = 0.0f; i < 3.0f; ++i)
+	{
+		pos = { i, 5.0f, -0.5f };
+		model = glm::translate(glm::mat4(1.0f), pos);
+		model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+		meshIndex = static_cast<uint32_t>(MeshType::GlassWindow);
 		objectData.push_back({ model, meshIndex });
 	}
-
-	pos = { 0.0f, 5.0f, 5.0f };
-	model = glm::translate(glm::mat4(1.0f), pos);
-	meshIndex = static_cast<uint32_t>(MeshType::glassWindow);
-
-	objectData.push_back({ model, meshIndex });
-
-	pos = { 0.0f, 5.0f, 7.0f };
-	model = glm::translate(glm::mat4(1.0f), pos);
-	meshIndex = static_cast<uint32_t>(MeshType::glassWindow);
-
-	objectData.push_back({ model, meshIndex });
-
-	pos = { 30.0f, 0.0f, 0.0f };
-	model = glm::translate(glm::mat4(1.0f), pos);
-	model = glm::scale(model, glm::vec3(0.01f)); //scale sponza
-
-	meshIndex = static_cast<uint32_t>(MeshType::sponza);
-
-	objectData.push_back({ model, meshIndex });
 
 	buffer.createObjectBuffer(objectData.size());
 	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData));

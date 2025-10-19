@@ -164,6 +164,13 @@ void ImGuiOverlay::drawUI()
 	ImGui::Checkbox("Enable Directional Light", &enableDirectionalLight);
 	ImGui::Checkbox("Enable Point Lights", &enablePointLights);
 
+	ImGui::Separator();
+	ImGui::Checkbox("Show Metrics", &showMetrics);
+	if (showMetrics)
+	{
+		ImGui::ShowMetricsWindow(&showMetrics);
+	}
+
 	ImGui::End();
 }
 
