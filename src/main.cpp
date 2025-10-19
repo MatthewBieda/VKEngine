@@ -165,9 +165,6 @@ int main()
 	setupSceneObjects(buffer, objectData);
 	setupLighting(buffer, lights);
 
-	buffer.createMeshBuffer(sizeof(Mesh), allMeshes.size());
-	buffer.updateMeshBuffer(allMeshes.data(), allMeshes.size() * sizeof(Mesh));
-
 	// Setup descriptors and pipelines
 	DescriptorManager descriptors(context, buffer, image);
 	descriptors.updateTextureArray(image.getTextureViews(), image.getSampler());

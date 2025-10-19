@@ -29,12 +29,7 @@ public:
 	VkDeviceSize getLightingBufferSize() const { return m_lightingBufferSize; }
 	VkDeviceSize getAlignedLightingSize() const { return m_alignedLightingSize; }
 
-	void createMeshBuffer(VkDeviceSize meshBufferSize, size_t maxMeshes);
-	VkBuffer getMeshBuffer() const { return m_meshBuffer; }
-	VkDeviceSize getMeshBufferSize() const { return m_meshBufferSize; }
-
 	void updateObjectBuffer(const void* data, size_t size);
-	void updateMeshBuffer(const void* data, size_t size);
 	void updateLightingBuffer(const void* data, size_t size, uint32_t currentFrame);
 
 private:
@@ -59,12 +54,6 @@ private:
 	void* m_lightingBufferMapped = nullptr;
 	VkDeviceSize m_lightingBufferSize = 0;
 	VkDeviceSize m_alignedLightingSize = 0;
-
-	// Mesh data SSBO
-	VkBuffer m_meshBuffer = VK_NULL_HANDLE;
-	VmaAllocation m_meshAllocation = VK_NULL_HANDLE;
-	void* m_meshBufferMapped = nullptr;
-	VkDeviceSize m_meshBufferSize = 0;
 
 	uint32_t m_maxFramesInFlight;
 

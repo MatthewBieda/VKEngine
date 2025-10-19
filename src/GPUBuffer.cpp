@@ -20,35 +20,6 @@ GPUBuffer::~GPUBuffer()
 	vmaDestroyBuffer(m_context.getAllocator(), m_indexBuffer, m_indexAllocation);
 	vmaDestroyBuffer(m_context.getAllocator(), m_objectBuffer, m_objectAllocation);
 	vmaDestroyBuffer(m_context.getAllocator(), m_lightingBuffer, m_lightingAllocation);
-	vmaDestroyBuffer(m_context.getAllocator(), m_meshBuffer, m_meshAllocation);
-}
-
-void GPUBuffer::createMeshBuffer(VkDeviceSize meshBufferSize, size_t maxMeshes)
-{
-	m_meshBufferSize = meshBufferSize * maxMeshes;
-
-	VkBufferCreateInfo bufferInfo{};
-	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufferInfo.size = m_meshBufferSize;
-	bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-	VmaAllocationCreateInfo allocInfo{};
-	allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-	allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-	if (vmaCreateBuffer(m_context.getAllocator(), &bufferInfo, &allocInfo, &m_meshBuffer, &m_meshAllocation, nullptr) != VK_SUCCESS)
-	{
-		throw std::runtime_error("Failed to create mesh SSBO");
-	}
-	std::cout << "Mesh SSBO created successfully (" << maxMeshes << " meshes)" << std::endl;
-
-	// Get mapped pointer
-	VmaAllocationInfo allocInfoDetails{};
-	vmaGetAllocationInfo(m_context.getAllocator(), m_meshAllocation, &allocInfoDetails);
-	m_meshBufferMapped = allocInfoDetails.pMappedData;
-
-	nameObject(m_context.getDevice(), m_meshBuffer, "MeshBuffer_SSBO");
 }
 
 void GPUBuffer::updateObjectBuffer(const void* data, size_t size)
@@ -58,15 +29,6 @@ void GPUBuffer::updateObjectBuffer(const void* data, size_t size)
 		throw std::runtime_error("Object buffer overflow!");
 	}
 	memcpy(m_objectBufferMapped, data, size);
-}
-
-void GPUBuffer::updateMeshBuffer(const void* data, size_t size)
-{
-	if (size > m_meshBufferSize)
-	{
-		throw std::runtime_error("Mesh buffer overflow!");
-	}
-	memcpy(m_meshBufferMapped, data, size);
 }
 
 void GPUBuffer::updateLightingBuffer(const void* data, size_t size, uint32_t currentFrame)
