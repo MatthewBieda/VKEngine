@@ -1,5 +1,6 @@
 ### VKEngine is a 3D rendering engine created with Vulkan and C++ 20.
 
+![VKEngine Latest Version](https://i.ibb.co/VshfqQg/VKEngine-Episode6-Cover.jpg)
 ![VKEngine Latest Version](https://i.ibb.co/TDQPF0mN/compressed-Vk-Engine-Latest.jpg)
 
 ### Current Features:
@@ -39,6 +40,15 @@
 
 - **Instanced Rendering**  
   Efficiently render large numbers of identical objects.
+
+- **Material Batching**  
+  Batch draw calls on a per-material basis to reduce the number of state changes needed in the render loop.
+
+- **Animations**  
+  Update an object's model matrix at runtime to translate, rotate and scale any object. 
+
+- **Light Casters**  
+  A small cube mesh that tracks the positions of a point light, making placing lights easy.
 
 - **Bindless Textures**  
   Uses descriptor indexing to give shaders direct access to large arrays of textures, eliminating the need to bind textures individually per draw call.
@@ -97,3 +107,9 @@
 - Add new pipelines (Skybox & Transparency) with separate render passes
 
 [![VKEngine - Devlog 5](https://img.youtube.com/vi/82CNc7eAjmw/0.jpg)](https://www.youtube.com/watch?v=82CNc7eAjmw)
+
+
+### Devlog 6
+- Submeshes, Material Batching, Animations & Light Casters
+
+[![VKEngine - Devlog 6](https://img.youtube.com/vi/sx5lNJ4Cczo/0.jpg)](https://www.youtube.com/watch?v=sx5lNJ4Cczo)
