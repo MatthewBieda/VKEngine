@@ -1,4 +1,5 @@
-### VKEngine is a 3D rendering engine created with Vulkan and C++ 20.
+<h1 align="center">VKEngine</h1>
+<h3 align="center">A 3D rendering engine created with Vulkan and C++20.</h3>
 
 ![VKEngine Latest Version](https://i.ibb.co/VshfqQg/VKEngine-Episode6-Cover.jpg)
 
