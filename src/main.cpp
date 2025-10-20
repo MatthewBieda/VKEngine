@@ -50,7 +50,7 @@ struct LightingData
 {
 	DirectionalLight dirLight;
 	int numPointLights;
-	alignas(16) PointLight pointLights[16];
+	alignas(16) PointLight pointLights[128];
 } lights;
 
 struct Submesh
@@ -97,8 +97,8 @@ std::vector<ObjectData> objectData{};
 
 struct AppState 
 {
-	uint32_t windowWidth = 2560;
-	uint32_t windowHeight = 1440;
+	uint32_t windowWidth = 1920;
+	uint32_t windowHeight = 1080;
 	bool framebufferResized = false;
 	bool cursorEnabled = false;
 	bool spacePressedLastFrame = false;
@@ -123,6 +123,7 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass);
 
 enum class MeshType
 {
+	LightCaster,
 	Sponza,
 	AlphaTestedGrass,
 	GlassWindow
@@ -130,6 +131,9 @@ enum class MeshType
 
 void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData);
 void setupLighting(GPUBuffer& buffer, LightingData& lights);
+void updateLighting(LightingData& lights, float deltaTime);
+void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime);
+
 void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image);
 
 int main()
@@ -156,14 +160,15 @@ int main()
 	};
 	image.createCubemap(skyBoxFaces);
 
+	uint32_t lightCaster = loadModel("../Models/LightCaster/lightCaster.obj", image);
 	uint32_t sponza = loadModel("../Models/Sponza/sponza.obj", image);
 	uint32_t alphaTestedGrass = loadModel("../Models/Grass/untitled.obj", image);
 	uint32_t glassWindow = loadModel("../Models/GlassWindow/glassWindow.obj", image);
 
 	// Create buffers and populate scene
 	GPUBuffer buffer(context, commands, allVertices, allIndices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
-	setupSceneObjects(buffer, objectData);
 	setupLighting(buffer, lights);
+	setupSceneObjects(buffer, objectData);
 
 	// Setup descriptors and pipelines
 	DescriptorManager descriptors(context, buffer, image);
@@ -347,59 +352,26 @@ int main()
 		}
 	}
 
-	// Main Render Loop
 	double lastTime{};
 	while (!glfwWindowShouldClose(window))
 	{
-		// Delta time
 		double currentTime = glfwGetTime();
 		float deltaTime = static_cast<float>(currentTime - lastTime);
 		lastTime = currentTime;
 
-		// Input + UI
+		// Update Input
 		glfwPollEvents();
 		processInput(window, deltaTime);
 
+		// Update UI
 		imgui.newFrame();
 		imgui.drawUI();
 
-		// Update Lighting data
-		static float t = 0.0f;
-		t += deltaTime;
-
-		// Light 1: Large circle, clockwise
-		float radius1 = 3.0f;
-		lights.pointLights[0].position = glm::vec4(
-			radius1 * cos(t),
-			2.0f,
-			radius1 * sin(t),
-			1.0f
-		);
-
-		// Light 2: Smaller circle, counterclockwise
-		float radius2 = 1.0f;
-		lights.pointLights[1].position = glm::vec4(
-			radius2 * cos(-t * 1.2f),
-			2.0f,
-			radius2 * sin(-t * 1.2f),
-			1.0f
-		);
-
-		// Update object transforms
-		for (int i = 1; i <= 3; ++i)
-		{
-			glm::vec3 pos = glm::vec3(i - 1, 5.0f, -0.5f);
-			objectData[i].model = glm::translate(glm::mat4(1.0f), pos);
-			objectData[i].model = glm::rotate(objectData[i].model, t, glm::vec3(0.0f, 1.0f, 0.0f));
-			objectData[i].model = glm::rotate(objectData[i].model, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-		}
+		updateLighting(lights, deltaTime);
+		updateObjects(objectData, lights, deltaTime);
 
 		// Wait for previous frame to finish
 		vkWaitForFences(context.getDevice(), 1, sync.getInFlightFencePtr(currentFrame), VK_TRUE, UINT64_MAX);
-
-		// Push per-frame data to the GPU
-		buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData), currentFrame);
-		buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);
 
 		// Acquire next swapchain image
 		uint32_t imageIndex;
@@ -415,11 +387,12 @@ int main()
 			throw std::runtime_error("Failed to acquire swapchain image!");
 		}
 
-		// Only reset the fence if we are submitting work
 		vkResetFences(context.getDevice(), 1, sync.getInFlightFencePtr(currentFrame));
-
-		// Reset command buffer
 		vkResetCommandBuffer(commands.getCommandBuffer(currentFrame), 0);
+
+		// Update GPU resources
+		buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData), currentFrame);
+		buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);
 
 		// Record commands
 		VkCommandBuffer cmd = commands.getCommandBuffer(currentFrame);
@@ -810,9 +783,16 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 
 void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 {
-	glm::vec3 pos;
-	glm::mat4 model;
-	uint32_t meshIndex;
+	glm::vec3 pos{ 0.0f, 0.0f, 0.0f };
+	glm::mat4 model = { 1.0f };
+	uint32_t meshIndex = 0;
+
+	// Light casters
+	for (int i = 0; i < lights.numPointLights; ++i)
+	{
+		meshIndex = static_cast<uint32_t>(MeshType::LightCaster);
+		objectData.push_back({ model, meshIndex });
+	}
 
 	// Sponza
 	pos = { 0.0f, 0.0f, 0.0f };
@@ -820,10 +800,16 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 	meshIndex = static_cast<uint32_t>(MeshType::Sponza);
 	objectData.push_back({ model, meshIndex });
 
+	// Sponza 2nd instance
+	pos = { 0.0f, 0.0f, 30.0f };
+	model = glm::translate(glm::mat4(1.0f), pos);
+	meshIndex = static_cast<uint32_t>(MeshType::Sponza);
+	objectData.push_back({ model, meshIndex });
+
 	// Windows
 	for (float i = 0.0f; i < 3.0f; ++i)
 	{
-		pos = { i, 5.0f, -0.5f };
+		pos = { i * 2.0f, 5.0f, -0.5f };
 		model = glm::translate(glm::mat4(1.0f), pos);
 		model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 		meshIndex = static_cast<uint32_t>(MeshType::GlassWindow);
@@ -839,18 +825,97 @@ void setupLighting(GPUBuffer& buffer, LightingData& lights)
 	lights.dirLight.direction = glm::vec4(-1.0f, -1.0f, -1.0f, 0.0f);
 	lights.dirLight.color = glm::vec4(1.0f);
 
-	lights.pointLights[0].position = glm::vec4(0.0f, 2.0f, 0.0f, 1.0f);
-	lights.pointLights[0].color = glm::vec4(5.0f, 0.0f, 0.0f, 1.0f);
-	lights.pointLights[0].radius = 5.0f;
+	lights.numPointLights = 100;
 
-	lights.pointLights[1].position = glm::vec4(0.0f, 2.0f, 0.0f, 1.0f);
-	lights.pointLights[1].color = glm::vec4(0.0f, 5.0f, 0.0f, 1.0f);
-	lights.pointLights[1].radius = 5.0f;
+	for (int i = 0; i < 100; ++i)
+	{
+		lights.pointLights[i].position = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
 
-	lights.numPointLights = 2;
+		// Cycle through colors
+		glm::vec3 colors[] = {
+			{1.0f, 0.0f, 0.0f},   // red
+			{0.0f, 1.0f, 0.0f},   // green
+			{0.0f, 0.0f, 1.0f},   // blue
+			{1.0f, 1.0f, 0.0f},   // yellow
+			{1.0f, 0.0f, 1.0f}    // magenta
+		};
+		lights.pointLights[i].color = glm::vec4(colors[i % 5], 1.0f);
+		lights.pointLights[i].radius = 5.0f;
+	}
 
 	buffer.createLightingBuffer(sizeof(LightingData));
 	buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);
+}
+
+void updateLighting(LightingData& lights, float deltaTime)
+{
+	static float t = 0.0f;
+	t += deltaTime;
+
+	for (int i = 0; i < lights.numPointLights; ++i)
+	{
+		int ring = i / 20;  // ring index
+		int posInRing = i % 20;
+
+		// ring properties
+		float baseRadius = 2.0f + ring * 1.5f;
+		float height = 1.0f + ring * 0.8f;
+		float rotationSpeed = 1.0f - (ring * 0.15f);  // Inner rings faster
+
+		float lightPos = (posInRing / 20.0f) * glm::radians(360.0f) + t * rotationSpeed;
+
+		lights.pointLights[i].position = glm::vec4(
+			baseRadius * cos(lightPos),
+			height,
+			baseRadius * sin(lightPos),
+			1.0f
+		);
+	}
+}
+
+void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime)
+{
+	static float t = 0.0f;
+	t += deltaTime;
+
+	// Sync light casters with point lights position
+	for (int i = 0; i < lights.numPointLights; ++i)
+	{
+		glm::vec3 pos = glm::vec3(lights.pointLights[i].position);
+		glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
+		model = glm::rotate(model, t * 2.0f, glm::vec3(0.0f, 1.0f, 0.0f)); // Spin around y-axis
+		objectData[i].model = model;
+	}
+
+	// Orbiting windows
+	glm::vec3 orbitCenter = glm::vec3(0.0f, 6.0f, -0.5f); // Pivot point for windows
+	constexpr float orbitRadius = 4.0f; // Distance from center
+	constexpr float orbitSpeed = glm::radians(45.0f); // degrees per second
+	constexpr float angularOffset = glm::radians(120.0f); // 3 window evenly spaced
+
+	for (int i = 102; i <= 104; ++i)
+	{
+		// Compute angular position
+		const int windowIndex = i - 102;
+		const float baseAngle = windowIndex * angularOffset;
+		const float currentAngle = baseAngle + t * orbitSpeed;
+
+		// Orbit position
+		glm::vec3 orbitPos = orbitCenter + glm::vec3(
+			orbitRadius * cos(currentAngle),
+			0.0f,
+			orbitRadius * sin(currentAngle)
+		);
+
+		// Build model matrix
+		glm::mat4 model = glm::translate(glm::mat4(1.0f), orbitPos);
+
+		// Rotate so window faces the center, then apply orientation correction
+		model = glm::rotate(model, -currentAngle, glm::vec3(0.0f, 1.0f, 0.0f));
+		model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+		objectData[i].model = model;
+	}
 }
 
 void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image)

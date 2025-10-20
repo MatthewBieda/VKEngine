@@ -40,7 +40,7 @@ layout(std430, set = 0, binding = 2) readonly buffer Lighting
     int padding0;
     int padding1;
     int padding2;
-    PointLight pointLights[16];
+    PointLight pointLights[128];
 } lighting;
 
 layout(location = 0) in vec3 fragPos;
@@ -96,11 +96,16 @@ void main() {
         {
             vec3 lightPos = lighting.pointLights[i].position.xyz;
             vec3 Lpoint = lightPos - fragPos;
-            float distance = length(Lpoint);
+            float dist = length(Lpoint);
+
+            if (dist > lighting.pointLights[i].radius) continue;
+            float attenuation = 1.0 / (dist * dist);
+
+            // This is way slower for some reason
+            // float attenuation = clamp(1.0 - dist / lighting.pointLights[i].radius, 0.0, 1.0);
+            // attenuation *= attenuation;
+
             Lpoint = normalize(Lpoint);
-
-            float attenuation = 1.0 / (distance * distance);
-
             vec3 Hpoint = normalize(Lpoint + V);
 
             // Diffuse
