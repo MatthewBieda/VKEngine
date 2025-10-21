@@ -1,7 +1,7 @@
 <h1 align="center">Sponza Adventure</h1>
 <h3 align="center">A proof-of-concept 3D game created with VKEngine!</h3>
 
-![SponzaAdventureStartScreen](https://i.ibb.co/8twNMHs/Sponza-Adventure-Thumbnail.jpg)
+![SponzaAdventureStartScreen](https://i.ibb.co/4zMhXgy/Sponza-Adventure-Gameplay-Image.jpg)
 
 ### Video Playtest
  
