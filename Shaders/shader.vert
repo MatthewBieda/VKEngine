@@ -5,7 +5,7 @@ struct Object
 {
 	mat4 model;
 	uint meshIndex;
-	uint padding1;
+	uint collected;
 	uint padding2;
 	uint padding3;
 };
@@ -32,6 +32,13 @@ layout(push_constant) uniform PushConstants
 
 void main() {
 	Object obj = objectData.objects[gl_InstanceIndex];
+
+	// Skip rendering if collected
+	if (obj.collected != 0)
+	{
+		gl_Position = vec4(0.0);
+		return;
+	}
 
 	mat4 modelMat = obj.model;
 	vec4 worldPos = modelMat * vec4(inPosition, 1.0);

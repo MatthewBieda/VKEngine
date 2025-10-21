@@ -28,11 +28,11 @@ public:
 
 	void drawUI();
 
-	inline static bool showMetrics = VK_FALSE;
+	inline static bool showMetrics = VK_TRUE;
 	inline static bool enableDepthTest = VK_TRUE;
 	inline static bool enableWireframe = VK_FALSE;
 	inline static bool enableDirectionalLight = VK_TRUE;
-	inline static bool enablePointLights = VK_TRUE;
+	inline static bool enablePointLights = VK_FALSE;
 
 private:
 	static void checkVkResult(VkResult err);

@@ -4,40 +4,6 @@ Camera::Camera(glm::vec3 position) : Position(position) {
 	UpdateCameraVectors();
 }
 
-void Camera::ProcessKeyboard(CameraMovement direction, float deltaTime)
-{
-	float velocity = MovementSpeed * deltaTime;
-	switch (direction)
-	{
-		case CameraMovement::FORWARD: Position += Front * velocity; break;
-		case CameraMovement::BACKWARD: Position -= Front * velocity; break;
-		case CameraMovement::LEFT: Position -= Right * velocity; break;
-		case CameraMovement::RIGHT: Position += Right * velocity; break;
-	}
-}
-
-void Camera::ProcessMouseMovement(float xOffset, float yOffset)
-{
-	xOffset *= MouseSensitivity;
-	yOffset *= MouseSensitivity;
-
-	Yaw += xOffset;
-	Pitch += yOffset;
-
-	// make sure that when pitch is out of bounds, screen doesn't get flipped
-	if (Pitch > 89.0f)
-	{
-		Pitch = 89.0f;
-	}
-	else if (Pitch < -89.0f)
-	{
-		Pitch = -89.0f;
-	}
-
-	// Update Front, Right and Up vectors using the updated Euler angles
-	UpdateCameraVectors();
-}
-
 void Camera::ProcessMouseScroll(float yOffset)
 {
 	Zoom -= yOffset;
@@ -49,6 +15,13 @@ void Camera::ProcessMouseScroll(float yOffset)
 	{
 		Zoom = 90.0f;
 	}
+}
+
+void Camera::FollowTarget(const glm::vec3& targetPos)
+{
+	glm::vec3 offset(FollowDistance, FollowHeight, 0.0f); // right side
+	Position = glm::mix(Position, targetPos + offset, 0.1f);
+	Front = glm::normalize(targetPos - Position);
 }
 
 void Camera::UpdateCameraVectors()

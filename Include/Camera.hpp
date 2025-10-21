@@ -3,15 +3,6 @@
 #include "glm.hpp"
 #include "gtc/matrix_transform.hpp"
 
-enum class CameraMovement
-{
-    FORWARD,
-    BACKWARD,
-    LEFT,
-    RIGHT
-};
-
-// Camera class that processes input and calculates Euler Angles, Vectors, and Matrices
 class Camera
 {
 public:
@@ -26,9 +17,12 @@ public:
     float Pitch{ 0.0f };
 
     // Camera options
-    float MovementSpeed{ 2.5f };
     float MouseSensitivity{ 0.2f };
     float Zoom{ 60.0f };
+
+    // Follow camera settings
+    float FollowDistance{ 4.0f };
+    float FollowHeight{ 2.0f };
 
     // Default Constructor
     Camera(glm::vec3 position = { 0.0f, 2.0f, 8.0f });
@@ -37,9 +31,10 @@ public:
         return glm::lookAt(Position, Position + Front, Up);
     }
 
-    void ProcessKeyboard(CameraMovement direction, float deltaTime);
-    void ProcessMouseMovement(float xOffset, float yOffset);
     void ProcessMouseScroll(float yOffset);
+
+    // Update camera position to follow target
+    void FollowTarget(const glm::vec3& targetPos);
 
 private:
     static constexpr glm::vec3 WorldUp{ 0.0f, 1.0f, 0.0f };

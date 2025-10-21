@@ -41,6 +41,49 @@
 static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 uint32_t currentFrame = 0;
 
+// game physics test
+struct BoundingBox
+{
+	glm::vec3 min;
+	glm::vec3 max;
+};
+
+inline BoundingBox computeBoundingBox(const glm::vec3& center, float size = 0.5f)
+{
+	float halfExtent = size / 2.0f;
+	return
+	{
+		center - glm::vec3(halfExtent),
+		center + glm::vec3(halfExtent)
+	};
+}
+
+bool AABBIntersection(const BoundingBox& a, const BoundingBox& b)
+{
+	return (a.min.x <= b.max.x && a.max.x >= b.min.x) &&
+		   (a.min.y <= b.max.y && a.max.y >= b.min.y) &&
+		   (a.min.z <= b.max.z && a.max.z >= b.min.z);
+}
+
+// Track collected rings & game state
+int ringsCollected = 0;
+constexpr int totalRings = 4;
+
+// game audio test
+// Soloud test
+SoLoud::Soloud gSoLoud; // SoLoud engine
+SoLoud::Wav gWave; // One wave file
+SoLoud::Wav gWave2; // One wave file
+
+enum class GameState
+{
+	StartScreen,
+	Playing,
+	GameWon
+};
+
+GameState gameState = GameState::StartScreen;
+
 struct PushConstants
 {
 	glm::mat4 view{};
@@ -97,7 +140,7 @@ struct ObjectData
 {
 	glm::mat4 model;
 	uint32_t meshIndex;
-	uint32_t padding1 = 0;
+	uint32_t collected = 0;
 	uint32_t padding2 = 0;
 	uint32_t padding3 = 0;
 };
@@ -124,7 +167,6 @@ std::vector<Material> allMaterials{};
 GLFWwindow* createWindow(AppState& appState);
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
-void mouseCallback(GLFWwindow* window, double xpos, double ypos);
 void processInput(GLFWwindow* window, float deltaTime);
 
 uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass);
@@ -133,27 +175,27 @@ enum class MeshType
 {
 	LightCaster,
 	Sponza,
-	AlphaTestedGrass,
-	GlassWindow
+	Cube,
+	Ring
 };
 
 void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData);
 void setupLighting(GPUBuffer& buffer, LightingData& lights);
 void updateLighting(LightingData& lights, float deltaTime);
-void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime);
+void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, GLFWwindow* window, float deltaTime);
+void updatePhysics(std::vector<ObjectData>& objectData);
+
+void resetGame();
 
 void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image);
 
 int main()
 {
-	// Soloud test
-	SoLoud::Soloud gSoLoud; // SoLoud engine
-	SoLoud::Wav gWave; // One wave file
-
 	// Initialize GLFW and SoLoud
 	GLFWwindow* window = createWindow(appState);
 	gSoLoud.init();
 	gWave.load("../Audio/shadowing.wav");
+	gWave2.load("../Audio/retro8.wav");
 
 	// Initialize Vulkan core
 	VulkanContext context(window);
@@ -178,8 +220,8 @@ int main()
 
 	uint32_t lightCaster = loadModel("../Models/LightCaster/lightCaster.obj", image);
 	uint32_t sponza = loadModel("../Models/Sponza/sponza.obj", image);
-	uint32_t alphaTestedGrass = loadModel("../Models/Grass/untitled.obj", image);
-	uint32_t glassWindow = loadModel("../Models/GlassWindow/glassWindow.obj", image);
+	uint32_t cube = loadModel("../Models/Cube/cube.obj", image);
+	uint32_t ring = loadModel("../Models/Ring/ring.obj", image);
 
 	// Create buffers and populate scene
 	GPUBuffer buffer(context, commands, allVertices, allIndices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
@@ -368,7 +410,8 @@ int main()
 		}
 	}
 
-	gSoLoud.playBackground(gWave);
+	// Start playing background music
+	gSoLoud.play(gWave, 0.3f, 0.0f, 0, 0);
 
 	double lastTime{};
 	while (!glfwWindowShouldClose(window))
@@ -383,10 +426,128 @@ int main()
 
 		// Update UI
 		imgui.newFrame();
-		imgui.drawUI();
+		//imgui.drawUI();
+
+		if (gameState == GameState::StartScreen)
+		{
+			ImGui::SetNextWindowPos(ImVec2(0, 0));
+			ImGui::SetNextWindowSize(ImVec2((float)appState.windowWidth, (float)appState.windowHeight));
+			ImGui::Begin("StartScreen", nullptr,
+				ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+				ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
+				ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBackground);
+
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+			// Semi-transparent dark background
+			drawList->AddRectFilled(
+				ImVec2(0, 0),
+				ImVec2((float)appState.windowWidth, (float)appState.windowHeight),
+				IM_COL32(0, 0, 0, 200)
+			);
+
+			const char* title = "SPONZA ADVENTURE!";
+			const char* objective = "Collect all the rings to win";
+			const char* controls = "Arrow keys to move.";
+			const char* start = "PRESS SPACE TO START";
+
+			ImFont* font = ImGui::GetFont();
+			float baseFontSize = ImGui::GetFontSize();
+
+			auto drawCenteredText = [&](const char* text, float scale, float& y, ImU32 color) {
+				float fontSize = baseFontSize * scale;
+				// Pass the actual font size to CalcTextSize
+				ImVec2 size = ImGui::CalcTextSize(text, nullptr, false, 0.0f);
+				size.x *= scale; // scale manually because CalcTextSize uses font size 1x
+				size.y *= scale;
+
+				ImVec2 pos((float)appState.windowWidth / 2.0f - size.x / 2.0f, y);
+				drawList->AddText(font, fontSize, pos, color, text);
+				y += size.y + (scale * 10.0f);
+				};
+
+
+			float y = appState.windowHeight * 0.4f; // start higher
+			drawCenteredText(title, 4.0f, y, IM_COL32(255, 255, 0, 255));
+			drawCenteredText(objective, 2.0f, y, IM_COL32(255, 255, 255, 255));
+			drawCenteredText(controls, 2.0f, y, IM_COL32(200, 200, 200, 255));
+			drawCenteredText(start, 3.0f, y, IM_COL32(255, 255, 0, 255));
+
+			ImGui::End();
+
+			if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+				gameState = GameState::Playing;
+		}
+		else if (gameState == GameState::Playing)
+		{
+			// Ring counter
+			ImGui::Begin("##Collectibles");
+			ImGui::SetWindowFontScale(3.0f);
+			ImGui::Text("Rings Collected: %d/%d", ringsCollected, totalRings);
+			ImGui::SetWindowFontScale(1.0f);
+			ImGui::End();
+		}
+		else if (gameState == GameState::GameWon)
+		{
+			// Fullscreen overlay
+			ImGui::SetNextWindowPos(ImVec2(0, 0));
+			ImGui::SetNextWindowSize(ImVec2((float)appState.windowWidth, (float)appState.windowHeight));
+			ImGui::Begin("Game Over Overlay", nullptr,
+				ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+				ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
+				ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBackground);
+
+			// Semi-transparent dark background
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			drawList->AddRectFilled(
+				ImVec2(0, 0),
+				ImVec2((float)appState.windowWidth, (float)appState.windowHeight),
+				IM_COL32(0, 0, 0, 180) // RGBA, 180 alpha for semi-transparency
+			);
+
+			// Text lines
+			const char* lines[] = {
+				"YOU WIN!",
+				"Press ESC to quit.",
+				"Press SPACE to play again."
+			};
+
+			ImFont* font = ImGui::GetFont();
+			float baseFontSize = ImGui::GetFontSize();
+
+			auto drawCenteredText = [&](const char* text, float scale, float& y, ImU32 color) {
+				float fontSize = baseFontSize * scale;
+				ImVec2 size = ImGui::CalcTextSize(text);
+				size.x *= scale; // scale manually because CalcTextSize uses font size 1x
+				size.y *= scale;
+
+				ImVec2 pos((float)appState.windowWidth / 2.0f - size.x / 2.0f, y);
+				drawList->AddText(font, fontSize, pos, color, text);
+				y += size.y + (scale * 10.0f); // vertical spacing
+				};
+
+			// Start drawing from slightly above center
+			float y = appState.windowHeight * 0.4f;
+			drawCenteredText(lines[0], 4.0f, y, IM_COL32(255, 255, 0, 255));  // YOU WIN!
+			drawCenteredText(lines[1], 2.0f, y, IM_COL32(255, 255, 255, 255)); // Press ESC
+			drawCenteredText(lines[2], 2.0f, y, IM_COL32(200, 200, 200, 255)); // Press SPACE
+
+			ImGui::End();
+
+			// Handle input
+			if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) 
+			{
+				resetGame();
+			}
+			if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+			{
+				glfwSetWindowShouldClose(window, GLFW_TRUE);
+			}
+		}
 
 		updateLighting(lights, deltaTime);
-		updateObjects(objectData, lights, deltaTime);
+		updateObjects(objectData, lights, window, deltaTime);
+		updatePhysics(objectData);
 
 		// Wait for previous frame to finish
 		vkWaitForFences(context.getDevice(), 1, sync.getInFlightFencePtr(currentFrame), VK_TRUE, UINT64_MAX);
@@ -806,34 +967,36 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 	glm::mat4 model = { 1.0f };
 	uint32_t meshIndex = 0;
 
-	// Light casters
-	for (int i = 0; i < lights.numPointLights; ++i)
-	{
-		meshIndex = static_cast<uint32_t>(MeshType::LightCaster);
-		objectData.push_back({ model, meshIndex });
-	}
-
-	// Sponza
 	pos = { 0.0f, 0.0f, 0.0f };
 	model = glm::translate(glm::mat4(1.0f), pos);
 	meshIndex = static_cast<uint32_t>(MeshType::Sponza);
 	objectData.push_back({ model, meshIndex });
 
-	// Sponza 2nd instance
-	pos = { 0.0f, 0.0f, 30.0f };
+	pos = { 0.0f, 0.0f, 0.0f };
 	model = glm::translate(glm::mat4(1.0f), pos);
-	meshIndex = static_cast<uint32_t>(MeshType::Sponza);
+	meshIndex = static_cast<uint32_t>(MeshType::Cube);
 	objectData.push_back({ model, meshIndex });
 
-	// Windows
-	for (float i = 0.0f; i < 3.0f; ++i)
-	{
-		pos = { i * 2.0f, 5.0f, -0.5f };
-		model = glm::translate(glm::mat4(1.0f), pos);
-		model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-		meshIndex = static_cast<uint32_t>(MeshType::GlassWindow);
-		objectData.push_back({ model, meshIndex });
-	}
+	pos = { -10.0f, 0.0f, 0.0f };
+	model = glm::translate(glm::mat4(1.0f), pos);
+	model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	meshIndex = static_cast<uint32_t>(MeshType::Ring);
+	objectData.push_back({ model, meshIndex });
+
+	pos = { 10.0f, 0.0f, 0.0f };
+	model = glm::translate(glm::mat4(1.0f), pos);
+	meshIndex = static_cast<uint32_t>(MeshType::Ring);
+	objectData.push_back({ model, meshIndex });
+
+	pos = { 0.0f, 0.0f, 4.0f };
+	model = glm::translate(glm::mat4(1.0f), pos);
+	meshIndex = static_cast<uint32_t>(MeshType::Ring);
+	objectData.push_back({ model, meshIndex });
+
+	pos = { 0.0f, 0.0f, -5.0f };
+	model = glm::translate(glm::mat4(1.0f), pos);
+	meshIndex = static_cast<uint32_t>(MeshType::Ring);
+	objectData.push_back({ model, meshIndex });
 
 	buffer.createObjectBuffer(objectData.size());
 	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData), currentFrame);
@@ -844,96 +1007,129 @@ void setupLighting(GPUBuffer& buffer, LightingData& lights)
 	lights.dirLight.direction = glm::vec4(-1.0f, -1.0f, -1.0f, 0.0f);
 	lights.dirLight.color = glm::vec4(1.0f);
 
-	lights.numPointLights = 100;
-
-	for (int i = 0; i < 100; ++i)
-	{
-		lights.pointLights[i].position = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
-
-		// Cycle through colors
-		glm::vec3 colors[] = {
-			{1.0f, 0.0f, 0.0f},   // red
-			{0.0f, 1.0f, 0.0f},   // green
-			{0.0f, 0.0f, 1.0f},   // blue
-			{1.0f, 1.0f, 0.0f},   // yellow
-			{1.0f, 0.0f, 1.0f}    // magenta
-		};
-		lights.pointLights[i].color = glm::vec4(colors[i % 5], 1.0f);
-		lights.pointLights[i].radius = 5.0f;
-	}
-
 	buffer.createLightingBuffer(sizeof(LightingData));
 	buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);
 }
 
 void updateLighting(LightingData& lights, float deltaTime)
 {
-	static float t = 0.0f;
-	t += deltaTime;
 
-	for (int i = 0; i < lights.numPointLights; ++i)
+}
+
+void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, GLFWwindow* window, float deltaTime)
+{
+	if (gameState != GameState::GameWon)
 	{
-		int ring = i / 20;  // ring index
-		int posInRing = i % 20;
+		// Define movement speed (units per second)
+		float moveSpeed = 2.0f;
 
-		// ring properties
-		float baseRadius = 2.0f + ring * 1.5f;
-		float height = 1.0f + ring * 0.8f;
-		float rotationSpeed = 1.0f - (ring * 0.15f);  // Inner rings faster
+		// Get the cube's current position
+		glm::vec3 cubePos = glm::vec3(objectData[1].model[3]);
+		glm::vec3 oldPos = cubePos;
 
-		float lightPos = (posInRing / 20.0f) * glm::radians(360.0f) + t * rotationSpeed;
+		// Arrow key movement
+		if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS)
+		{
+			cubePos.x -= moveSpeed * deltaTime;
+		}
+		if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)
+		{
+			cubePos.x += moveSpeed * deltaTime;
+		}
+		if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS)
+		{
+			cubePos.z += moveSpeed * deltaTime;
+		}
+		if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)
+		{
+			cubePos.z -= moveSpeed * deltaTime;
+		}
+		objectData[1].model = glm::translate(glm::mat4(1.0f), cubePos);
 
-		lights.pointLights[i].position = glm::vec4(
-			baseRadius * cos(lightPos),
-			height,
-			baseRadius * sin(lightPos),
-			1.0f
-		);
+		// Update camera Yaw based on movement direction
+		if (glm::length(cubePos - oldPos) > 0.001f)
+		{
+			glm::vec3 moveDir = glm::normalize(cubePos - oldPos);
+			camera.Yaw = glm::degrees(atan2(moveDir.z, moveDir.x)) - 90.0f;
+		}
+
+		// Update camera to follow cube
+		camera.FollowTarget(cubePos);
+	}
+
+	if (gameState != GameState::Playing) return;
+	for (int i = 2; i <= 5; ++i)
+	{
+		// Skip collected rings
+		if (objectData[i].collected != 0)
+		{
+			continue;
+		}
+
+		// Make rings spin and bob
+		// Spin around local Y axis
+		constexpr float rotationSpeed = glm::radians(180.0f); // degrees per second
+		glm::vec3 localCenter(0.0f, 0.0f, 0.0f);   // mesh center offset, adjust if needed
+
+		// Decompose translation from obj.model
+		glm::vec3 translation = glm::vec3(objectData[i].model[3]); // last column
+		glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), rotationSpeed * deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
+
+		// Rebuild model: translate to origin, rotate, translate back
+		objectData[i].model = glm::translate(glm::mat4(1.0f), translation) *
+			rotation *
+			glm::translate(glm::mat4(1.0f), -translation) *
+			objectData[i].model;
 	}
 }
 
-void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime)
+void updatePhysics(std::vector<ObjectData>& objectData)
 {
-	static float t = 0.0f;
-	t += deltaTime;
+	if (gameState != GameState::Playing) return;
 
-	// Sync light casters with point lights position
-	for (int i = 0; i < lights.numPointLights; ++i)
+	glm::vec3 cubePos = glm::vec3(objectData[1].model[3]);
+	BoundingBox cubeBox = computeBoundingBox(cubePos);
+
+	for (int i = 2; i <= 5; ++i)
 	{
-		glm::vec3 pos = glm::vec3(lights.pointLights[i].position);
-		glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-		model = glm::rotate(model, t * 2.0f, glm::vec3(0.0f, 1.0f, 0.0f)); // Spin around y-axis
-		objectData[i].model = model;
+		if (objectData[i].collected != 0)
+		{
+			continue;
+		}
+
+		glm::vec3 ringPos = glm::vec3(objectData[i].model[3]);
+		BoundingBox ringBox = computeBoundingBox(ringPos);
+
+		if (AABBIntersection(cubeBox, ringBox))
+		{
+			gSoLoud.play(gWave2);
+			objectData[i].collected = 1;
+			++ringsCollected;
+			std::cout << "Ring collected: Total: " << ringsCollected << std::endl;
+		}
 	}
 
-	// Orbiting windows
-	glm::vec3 orbitCenter = glm::vec3(0.0f, 6.0f, -0.5f); // Pivot point for windows
-	constexpr float orbitRadius = 4.0f; // Distance from center
-	constexpr float orbitSpeed = glm::radians(45.0f); // degrees per second
-	constexpr float angularOffset = glm::radians(120.0f); // 3 window evenly spaced
-
-	for (int i = 102; i <= 104; ++i)
+	// Check for win state
+	if (ringsCollected == totalRings)
 	{
-		// Compute angular position
-		const int windowIndex = i - 102;
-		const float baseAngle = windowIndex * angularOffset;
-		const float currentAngle = baseAngle + t * orbitSpeed;
+		gameState = GameState::GameWon;
+	}
+}
 
-		// Orbit position
-		glm::vec3 orbitPos = orbitCenter + glm::vec3(
-			orbitRadius * cos(currentAngle),
-			0.0f,
-			orbitRadius * sin(currentAngle)
-		);
+void resetGame()
+{
+	gameState = GameState::Playing;
+	ringsCollected = 0;
 
-		// Build model matrix
-		glm::mat4 model = glm::translate(glm::mat4(1.0f), orbitPos);
+	// reset player position
+	glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
+	glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
+	objectData[1].model = model;
 
-		// Rotate so window faces the center, then apply orientation correction
-		model = glm::rotate(model, -currentAngle, glm::vec3(0.0f, 1.0f, 0.0f));
-		model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-
-		objectData[i].model = model;
+	// mark rings as uncollected
+	for (int i = 2; i <= 5; ++i)
+	{
+		objectData[i].collected = 0;
 	}
 }
 
@@ -955,32 +1151,6 @@ void framebufferResizeCallback(GLFWwindow* window, int width, int height)
 void scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
 {
 	camera.ProcessMouseScroll(static_cast<float>(yoffset));
-}
-
-void mouseCallback(GLFWwindow* window, double xpos, double ypos)
-{
-	if (appState.cursorEnabled)
-	{
-		return;
-	}
-
-	static double lastX = xpos;
-	static double lastY = ypos;
-
-	if (appState.firstMouse)
-	{
-		lastX = xpos;
-		lastY = ypos;
-		appState.firstMouse = false;
-	}
-
-	float xOffset = static_cast<float>(xpos - lastX);
-	float yOffset = static_cast<float>(lastY - ypos); // Reversed: y-coordinates go from bottom to top
-
-	lastX = xpos;
-	lastY = ypos;
-
-	camera.ProcessMouseMovement(xOffset, yOffset);
 }
 
 void processInput(GLFWwindow* window, const float deltaTime)
@@ -1005,18 +1175,6 @@ void processInput(GLFWwindow* window, const float deltaTime)
 		}
 	}
 	appState.spacePressedLastFrame = spacePressed;
-
-	if (!appState.cursorEnabled )
-	{
-		if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-			camera.ProcessKeyboard(CameraMovement::FORWARD, deltaTime);
-		if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-			camera.ProcessKeyboard(CameraMovement::BACKWARD, deltaTime);
-		if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-			camera.ProcessKeyboard(CameraMovement::LEFT, deltaTime);
-		if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-			camera.ProcessKeyboard(CameraMovement::RIGHT, deltaTime);
-	}
 }
 
 GLFWwindow* createWindow(AppState& appState)
@@ -1038,7 +1196,6 @@ GLFWwindow* createWindow(AppState& appState)
 	);
 
 	glfwSetScrollCallback(window, scrollCallback);
-	glfwSetCursorPosCallback(window, mouseCallback);
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	glfwSetWindowUserPointer(window, &appState);
 	glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
