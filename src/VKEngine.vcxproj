@@ -103,7 +103,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)Include;$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb;$(SolutionDir)ThirdParty\tinyOBJ;$(SolutionDir)ThirdParty\ImGui</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Include;$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb;$(SolutionDir)ThirdParty\tinyOBJ;$(SolutionDir)ThirdParty\ImGui;$(SolutionDir)ThirdParty\soloud\include;$(SolutionDir)ThirdParty\soloud\src\backend\miniaudio;$(SolutionDir)ThirdParty\soloud\src\audiosource\wav</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <TreatWarningAsError>true</TreatWarningAsError>
@@ -124,7 +124,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)Include;$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb;$(SolutionDir)ThirdParty\tinyOBJ;$(SolutionDir)ThirdParty\ImGui</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Include;$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb;$(SolutionDir)ThirdParty\tinyOBJ;$(SolutionDir)ThirdParty\ImGui;$(SolutionDir)ThirdParty\soloud\include;$(SolutionDir)ThirdParty\soloud\src\backend\miniaudio;$(SolutionDir)ThirdParty\soloud\src\audiosource\wav</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <TreatWarningAsError>true</TreatWarningAsError>
@@ -144,6 +144,29 @@
     <ClCompile Include="..\ThirdParty\ImGui\imgui_impl_vulkan.cpp" />
     <ClCompile Include="..\ThirdParty\ImGui\imgui_tables.cpp" />
     <ClCompile Include="..\ThirdParty\ImGui\imgui_widgets.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\audiosource\wav\dr_impl.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\audiosource\wav\soloud_wav.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\audiosource\wav\soloud_wavstream.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\audiosource\wav\stb_vorbis.c" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_audiosource.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_bus.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_core_3d.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_core_basicops.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_core_faderops.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_core_filterops.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_core_getters.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_core_setters.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_core_voicegroup.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_core_voiceops.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_fader.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_fft.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_fft_lut.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_file.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_filter.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_misc.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_queue.cpp" />
+    <ClCompile Include="..\ThirdParty\soloud\src\core\soloud_thread.cpp" />
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="Commands.cpp" />
     <ClCompile Include="DescriptorManager.cpp" />

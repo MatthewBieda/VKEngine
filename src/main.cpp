@@ -1,3 +1,7 @@
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#undef APIENTRY
+
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -16,6 +20,9 @@
 #include "gtc/matrix_transform.hpp"
 #include "chrono"
 #include <tiny_obj_loader.h>
+
+#include "soloud.h"
+#include "soloud_wav.h"
 
 #include "VulkanContext.hpp" // Instance, device, surface, debug messenger
 #include "Swapchain.hpp" // Swapchain, image views
@@ -43,6 +50,7 @@ struct PushConstants
 	uint32_t enablePointLights = 1;
 	uint32_t enableAlphaTest = 1;
 	uint32_t diffuseTextureIndex = 0;
+
 	float reflectionStrength = 0.0f;
 } pc;
 
@@ -138,8 +146,16 @@ void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GP
 
 int main()
 {
-	// Initialize Vulkan core
+	// Soloud test
+	SoLoud::Soloud gSoLoud; // SoLoud engine
+	SoLoud::Wav gWave; // One wave file
+
+	// Initialize GLFW and SoLoud
 	GLFWwindow* window = createWindow(appState);
+	gSoLoud.init();
+	gWave.load("../Audio/shadowing.wav");
+
+	// Initialize Vulkan core
 	VulkanContext context(window);
 	Swapchain swapchain(window, context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
@@ -351,6 +367,8 @@ int main()
 			}
 		}
 	}
+
+	gSoLoud.playBackground(gWave);
 
 	double lastTime{};
 	while (!glfwWindowShouldClose(window))
@@ -623,6 +641,7 @@ int main()
 	vkDeviceWaitIdle(context.getDevice());
 	glfwDestroyWindow(window);
 	glfwTerminate();
+	gSoLoud.deinit();
 
 	return 0;
 }
