@@ -1,5 +1,5 @@
 <h1 align="center">Sponza Adventure</h1>
-<h3 align="center">A proof-of-concept 3D game created with VKEngine!.</h3>
+<h3 align="center">A proof-of-concept 3D game created with VKEngine!</h3>
 
 ![SponzaAdventureStartScreen](https://i.ibb.co/8twNMHs/Sponza-Adventure-Thumbnail.jpg)
 
