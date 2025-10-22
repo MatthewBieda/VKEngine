@@ -3,8 +3,6 @@
 
 ![VKEngine Latest Version](https://i.ibb.co/VshfqQg/VKEngine-Episode6-Cover.jpg)
 
-![VKEngine Latest Version](https://i.ibb.co/TDQPF0mN/compressed-Vk-Engine-Latest.jpg)
-
 ### Current Features:
 
 - **3D Model and Texture Loading**  
