@@ -171,6 +171,8 @@ void ImGuiOverlay::drawUI()
 		ImGui::ShowMetricsWindow(&showMetrics);
 	}
 
+	ImGui::Checkbox("Freeze Camera Frustum", &freezeFrustum);
+
 	ImGui::End();
 }
 

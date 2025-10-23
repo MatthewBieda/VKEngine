@@ -51,7 +51,7 @@ struct PushConstants
 struct LightingData
 {
 	DirectionalLight dirLight;
-	int numPointLights;
+	uint32_t numPointLights = 0;
 	alignas(16) PointLight pointLights[128];
 } lights;
 
@@ -60,7 +60,7 @@ struct Submesh
 	uint32_t indexOffset;
 	uint32_t indexCount;
 	uint32_t materialIndex;
-	AABB bounds;
+	AABB bounds; // submesh-level AABB will be used for collision
 	uint32_t padding = 0;
 };
 
@@ -70,7 +70,7 @@ struct Mesh
 	uint32_t vertexCount;
 	uint32_t submeshOffset;
 	uint32_t submeshCount;
-	AABB bounds;
+	AABB bounds; // used for frustum culling
 };
 
 struct Material
@@ -93,11 +93,28 @@ struct ObjectData
 {
 	glm::mat4 model;
 	uint32_t meshIndex;
-	uint32_t isVisible; // set by frustum culling or game logic
+	uint32_t isVisible = 0; // set by frustum culling or game logic
 	uint32_t padding2 = 0;
 	uint32_t padding3 = 0;
 };
 std::vector<ObjectData> objectData{};
+
+struct DrawCommand
+{
+	uint32_t indexCount;
+	uint32_t instanceCount;
+	uint32_t firstIndex;
+	int32_t vertexOffset;
+	uint32_t firstInstance;
+	Material material;
+	std::vector<uint32_t> objectIndices;
+};
+
+struct DrawLists
+{
+	std::vector<std::vector<DrawCommand>> opaque;
+	std::vector<std::vector<DrawCommand>> transparent;
+};
 
 struct AppState 
 {
@@ -107,6 +124,7 @@ struct AppState
 	bool cursorEnabled = false;
 	bool spacePressedLastFrame = false;
 	bool firstMouse = true;
+	bool wasFreezeFrustumEnabled = false;
 } appState;
 
 Camera camera;
@@ -130,13 +148,21 @@ enum class MeshType
 	LightCaster,
 	Sponza,
 	AlphaTestedGrass,
-	GlassWindow
+	GlassWindow,
+	Cube
 };
 
 void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData);
 void setupLighting(GPUBuffer& buffer, LightingData& lights);
 void updateLighting(LightingData& lights, float deltaTime);
 void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime);
+std::vector<uint32_t> performFrustumCulling(std::vector<ObjectData>& objectData, const std::vector<Mesh>& allMeshes, const Frustum& frustum);
+DrawLists buildDrawCommands(
+	const std::unordered_map<uint32_t, std::vector<uint32_t>>& objectsByMesh,
+	const std::vector<ObjectData>& objectData,
+	const std::vector<Mesh>& allMeshes,
+	const std::vector<Submesh>& allSubmeshes,
+	const std::vector<Material>& allMaterials);
 
 void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image);
 
@@ -168,6 +194,7 @@ int main()
 	uint32_t sponza = loadModel("../Models/Sponza/sponza.obj", image);
 	uint32_t alphaTestedGrass = loadModel("../Models/Grass/untitled.obj", image);
 	uint32_t glassWindow = loadModel("../Models/GlassWindow/glassWindow.obj", image);
+	uint32_t cube = loadModel("../Models/Cube/cube.obj", image);
 
 	// Create buffers and populate scene
 	GPUBuffer buffer(context, commands, allVertices, allIndices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
@@ -308,55 +335,8 @@ int main()
 		objectsByMesh[objectData[i].meshIndex].push_back(i);
 	}
 
-	// Create draw command lists for opaque and transparent objects
-	struct DrawCommand
-	{
-		uint32_t indexCount;
-		uint32_t instanceCount;
-		uint32_t firstIndex;
-		int32_t vertexOffset;
-		uint32_t firstInstance;
-
-		Material material;
-		VkCullModeFlagBits cullMode;
-	};
-
-	std::vector<std::vector<DrawCommand>> opaqueDrawsByMaterial(allMaterials.size());
-	std::vector<std::vector<DrawCommand>> transparentDrawsByMaterial(allMaterials.size());
-
-	// Build draw command list grouped by material
-	for (const auto& [meshIndex, instanceIndices] : objectsByMesh)
-	{
-		const Mesh& mesh = allMeshes[meshIndex];
-
-		// Loop over submeshes within this mesh
-		for (uint32_t submeshIdx = 0; submeshIdx < mesh.submeshCount; ++submeshIdx)
-		{
-			const Submesh& submesh = allSubmeshes[mesh.submeshOffset + submeshIdx];
-			const Material& material = allMaterials[submesh.materialIndex];
-
-			DrawCommand cmd{};
-			cmd.indexCount = submesh.indexCount;
-			cmd.instanceCount = static_cast<uint32_t>(instanceIndices.size());
-			cmd.firstIndex = submesh.indexOffset;
-			cmd.vertexOffset = static_cast<uint32_t>(mesh.vertexOffset);
-			cmd.firstInstance = instanceIndices.front();
-			cmd.material = material;
-			cmd.cullMode = (material.twosided == 1) ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
-
-			// Split opaque vs transparent at build time
-			if (material.alphablending == 1)
-			{
-				transparentDrawsByMaterial[submesh.materialIndex].push_back(cmd);
-			}
-			else
-			{
-				opaqueDrawsByMaterial[submesh.materialIndex].push_back(cmd);
-			}
-		}
-	}
-
 	Frustum frustum;
+	Frustum frozenFrustum;
 
 	double lastTime{};
 	while (!glfwWindowShouldClose(window))
@@ -365,37 +345,45 @@ int main()
 		float deltaTime = static_cast<float>(currentTime - lastTime);
 		lastTime = currentTime;
 
-		// Update Input
+		// Input & Simulation
 		glfwPollEvents();
 		processInput(window, deltaTime);
-
-		// Update UI
 		imgui.newFrame();
 		imgui.drawUI();
-
 		updateLighting(lights, deltaTime);
 		updateObjects(objectData, lights, deltaTime);
 
-		// update view frustum
+		// Culling & Draw preperation
+		pc.view = camera.GetViewMatrix();
+		pc.proj = glm::perspective(glm::radians(camera.Zoom),
+			(float)appState.windowWidth / (float)appState.windowHeight,
+			0.1f, 50.0f);
+		pc.proj[1][1] *= -1; // Flip Y for Vulkan
+
 		glm::mat4 viewProj = pc.proj * pc.view;
 		frustum.update(viewProj);
 
-		// Mark objects as invisble if they fail Frustum check
-		for (uint32_t i = 0; i < objectData.size(); ++i)
+		if (imgui.freezeFrustum && !appState.wasFreezeFrustumEnabled)
 		{
-			auto& obj = objectData[i];
-			const auto& mesh = allMeshes[obj.meshIndex];
-
-			// Transform mesh AABB to world space and check visibility against frustum
-			AABB worldBounds = mesh.bounds.transform(obj.model);
-			bool visible = frustum.isBoxVisible(worldBounds.min, worldBounds.max);
-			//bool visible = frustum.isSphereVisible(worldBounds.center(), worldBounds.radius());
-
-			obj.isVisible = visible ? 1 : 0;
+			frozenFrustum.update(viewProj);
 		}
+		appState.wasFreezeFrustumEnabled = imgui.freezeFrustum;
+
+		// Choose the frustum to use for culling and perform culling, then build draw lists based on visibility
+		const Frustum& cullingFrustum = imgui.freezeFrustum ? frozenFrustum : frustum;
+		std::vector<uint32_t> globalVisibleIndices = performFrustumCulling(objectData, allMeshes, cullingFrustum);
+		DrawLists drawLists = buildDrawCommands(objectsByMesh, objectData, allMeshes, allSubmeshes, allMaterials);
 
 		// Wait for previous frame to finish
 		vkWaitForFences(context.getDevice(), 1, sync.getInFlightFencePtr(currentFrame), VK_TRUE, UINT64_MAX);
+
+		// Update GPU resources
+		buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData), currentFrame);
+		buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);
+		if (!globalVisibleIndices.empty())
+		{
+			buffer.updateVisibleIndexBuffer(globalVisibleIndices.data(), globalVisibleIndices.size() * sizeof(uint32_t), currentFrame);
+		}
 
 		// Acquire next swapchain image
 		uint32_t imageIndex;
@@ -410,10 +398,6 @@ int main()
 		{
 			throw std::runtime_error("Failed to acquire swapchain image!");
 		}
-
-		// Update GPU resources
-		buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData), currentFrame);
-		buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);
 
 		vkResetFences(context.getDevice(), 1, sync.getInFlightFencePtr(currentFrame));
 		vkResetCommandBuffer(commands.getCommandBuffer(currentFrame), 0);
@@ -469,51 +453,37 @@ int main()
 		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
 		// Calculate dynamic offset for current frame
-		std::array<uint32_t, 2> dynamicOffsets = {
+		std::array<uint32_t, 3> dynamicOffsets = {
 			static_cast<uint32_t>(currentFrame * buffer.getAlignedObjectSize()),
-			static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize())
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize()),
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedVisibleIndexBufferSize())
 		};
 
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scenePipeline.getLayout(), 0, 1, &set, 2, dynamicOffsets.data());
+		vkCmdBindDescriptorSets(cmd, 
+			VK_PIPELINE_BIND_POINT_GRAPHICS, 
+			scenePipeline.getLayout(), 
+			0, 1, &set, 
+			static_cast<uint32_t>(dynamicOffsets.size()),
+			dynamicOffsets.data());
 
-		pc.view = camera.GetViewMatrix();
-		pc.proj = glm::perspective(glm::radians(camera.Zoom),
-			(float)appState.windowWidth / (float)appState.windowHeight,
-			0.1f, 50.0f);
-		// Flip Y scaling factor for Vulkan compatibility with GLM
-		pc.proj[1][1] *= -1;
 		pc.cameraPos = camera.Position;
 		pc.enableDirectionalLight = imgui.enableDirectionalLight ? 1 : 0;
 		pc.enablePointLights = imgui.enablePointLights ? 1 : 0;
 
 		// Loop over meshes
-		for (uint32_t matIdx = 0; matIdx < opaqueDrawsByMaterial.size(); ++matIdx)
+		for (uint32_t matIdx = 0; matIdx < drawLists.opaque.size(); ++matIdx)
 		{
-			const auto& drawCmds = opaqueDrawsByMaterial[matIdx];
+			const auto& drawCmds = drawLists.opaque[matIdx];
 			if (drawCmds.empty())
 			{
 				continue;
 			}
-
-			// Check if any instance is visible for this material
-			bool materialVisible = false;
-			for (const auto& cmd : drawCmds)
-			{
-				for (uint32_t i = 0; i < cmd.instanceCount; ++i)
-				{
-					if (objectData[cmd.firstInstance + i].isVisible)
-
-					{
-						materialVisible = true;
-						break;
-					}
-				}
-				if (materialVisible) break;
-			}
-			if (!materialVisible) continue; // skip cull mode & push constants
 			
+			// Set cull mode and upload push constants for this material
 			const Material& material = drawCmds[0].material;
-			scenePipeline.setCullMode(cmd, drawCmds[0].cullMode);
+
+			VkCullModeFlagBits cullMode = (material.twosided == 1) ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
+			scenePipeline.setCullMode(cmd, cullMode);
 
 			pc.enableAlphaTest = (material.alphatest == 1) ? 1 : 0;
 			pc.diffuseTextureIndex = static_cast<int>(material.albedoTexture);
@@ -524,23 +494,6 @@ int main()
 			// Draw all submeshes of this material
 			for (const auto& drawCmd : drawCmds)
 			{
-				// Cull objects outside the view frustum
-				bool anyVisible = false;
-				for (uint32_t i = 0; i < drawCmd.instanceCount; ++i)
-				{
-					uint32_t instanceIndex = drawCmd.firstInstance + i;
-					if (objectData[instanceIndex].isVisible)
-					{
-						anyVisible = true;
-						break;
-					}
-				}
-				
-				if (!anyVisible)
-				{
-					continue;
-				}
-
 				vkCmdDrawIndexed(cmd, drawCmd.indexCount, drawCmd.instanceCount, drawCmd.firstIndex, drawCmd.vertexOffset, drawCmd.firstInstance
 				);
 			}
@@ -571,31 +524,41 @@ int main()
 
 		// Struct to hold per-instance transparent draw info
 		struct TransparentInstance {
-			uint32_t objIndex;
-			uint32_t materialIndex;
-			float distanceToCamera;
+			uint32_t objIndex;				// Global object index
+			uint32_t materialIndex;			// Material ID for looking up draw command
+			float distanceToCamera;			// For front-to-back sorting
 		};
 
-		// Collect all transparent objects
+		// Build reverse lookup: global object index -> compact visible array index
+		// This is needed because the shader uses gl_InstanceIndex to index into
+		// the compact visibleIndices buffer, but we're sorting by global object index
+		std::unordered_map<uint32_t, uint32_t> objectToVisibleIndex;
+		for (uint32_t i = 0; i < globalVisibleIndices.size(); ++i)
+		{
+			objectToVisibleIndex[globalVisibleIndices[i]] = i;
+		}
+
+		// Collect all transparent objects for sorting
 		std::vector<TransparentInstance> transparentObjects;
 
-		for (uint32_t matIdx = 0; matIdx < transparentDrawsByMaterial.size(); ++matIdx)
+		for (uint32_t matIdx = 0; matIdx < drawLists.transparent.size(); ++matIdx)
 		{
-			auto& drawCommands = transparentDrawsByMaterial[matIdx];
+			auto& drawCommands = drawLists.transparent[matIdx];
 			for (auto& cmd: drawCommands)
 			{
-				for (uint32_t i = 0; i < cmd.instanceCount; ++i)
-				{
-					uint32_t objIndex = cmd.firstInstance + i;
+				// Each DrawCommand has a list of visible global object indices
+                for (uint32_t i = 0; i < cmd.instanceCount; ++i)
+                {
+                    uint32_t objIndex = cmd.objectIndices[i];
 					glm::vec3 objPos = glm::vec3(objectData[objIndex].model[3]);
 
-					float dist = glm::length(camera.Position - objPos);
-					transparentObjects.push_back({ objIndex, matIdx, dist });
-				}
+                    float dist = glm::length(camera.Position - objPos);
+                    transparentObjects.push_back({ objIndex, matIdx, dist });
+                }
 			}
 		}
 
-		// Sort back to front
+		// Sort back to front for proper alpha blending
 		std::sort(transparentObjects.begin(), transparentObjects.end(),
 			[](const TransparentInstance& a, const TransparentInstance& b) {
 				return a.distanceToCamera > b.distanceToCamera;
@@ -604,7 +567,7 @@ int main()
 		// Draw transparent objects individually
 		for (const auto& inst: transparentObjects)
 		{
-			const auto& drawCmd = transparentDrawsByMaterial[inst.materialIndex][0];
+			const auto& drawCmd = drawLists.transparent[inst.materialIndex][0];
 			const auto& mat = drawCmd.material;
 
 			pc.enableAlphaTest = mat.alphatest;
@@ -615,13 +578,15 @@ int main()
 				VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
 				0, sizeof(pc), &pc);
 
-			// Back faces
-			transparentPipeline.setCullMode(cmd, VK_CULL_MODE_FRONT_BIT);
-			vkCmdDrawIndexed(cmd, drawCmd.indexCount, 1, drawCmd.firstIndex, drawCmd.vertexOffset, inst.objIndex);
+			// Covert global object index to compact visible index for shader lookup
+			uint32_t visibleIndex = objectToVisibleIndex[inst.objIndex];
 
-			// Front faces
+			// Draw back faces first, then front faces for correct transparency
+			transparentPipeline.setCullMode(cmd, VK_CULL_MODE_FRONT_BIT);
+			vkCmdDrawIndexed(cmd, drawCmd.indexCount, 1, drawCmd.firstIndex, drawCmd.vertexOffset, visibleIndex);
+
 			transparentPipeline.setCullMode(cmd, VK_CULL_MODE_BACK_BIT);
-			vkCmdDrawIndexed(cmd, drawCmd.indexCount, 1, drawCmd.firstIndex, drawCmd.vertexOffset, inst.objIndex);
+			vkCmdDrawIndexed(cmd, drawCmd.indexCount, 1, drawCmd.firstIndex, drawCmd.vertexOffset, visibleIndex);
 		}
 
 		vkCmdEndDebugUtilsLabelEXT(cmd);
@@ -844,40 +809,54 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 
 void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 {
-	glm::vec3 pos{ 0.0f, 0.0f, 0.0f };
-	glm::mat4 model = { 1.0f };
-	uint32_t meshIndex = 0;
+	// Define spacing between cubes
+	float spacing = 3.0f;
+	uint32_t gridSize = 10;
+	uint32_t meshIndex = static_cast<uint32_t>(MeshType::Cube);
 
-	// Light casters
-	for (int i = 0; i < lights.numPointLights; ++i)
+	// Iterate rows
+	for (uint32_t x = 0; x < gridSize; ++x)
 	{
-		meshIndex = static_cast<uint32_t>(MeshType::LightCaster);
-		objectData.push_back({ model, meshIndex });
+		// Iterate cols
+		for (uint32_t z = 0; z < gridSize; ++z)
+		{
+			// Calculate the current cube's position
+			glm::vec3 pos = {
+				(float)x * spacing,
+				0.0f,
+				(float)z* spacing
+			};
+
+			glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);			
+			objectData.push_back({ model, meshIndex });
+		}
 	}
 
-	// Sponza
-	pos = { 0.0f, 0.0f, 0.0f };
-	model = glm::translate(glm::mat4(1.0f), pos);
-	meshIndex = static_cast<uint32_t>(MeshType::Sponza);
-	objectData.push_back({ model, meshIndex });
+	// Add windows
+	spacing = 2.0f;
+	gridSize = 4;
+	meshIndex = static_cast<uint32_t>(MeshType::GlassWindow);
 
-	// Sponza 2nd instance
-	pos = { 0.0f, 0.0f, 30.0f };
-	model = glm::translate(glm::mat4(1.0f), pos);
-	meshIndex = static_cast<uint32_t>(MeshType::Sponza);
-	objectData.push_back({ model, meshIndex });
-
-	// Windows
-	for (float i = 0.0f; i < 3.0f; ++i)
+	// Iterate rows
+	for (uint32_t x = 0; x < gridSize; ++x)
 	{
-		pos = { i * 2.0f, 5.0f, -0.5f };
-		model = glm::translate(glm::mat4(1.0f), pos);
-		model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-		meshIndex = static_cast<uint32_t>(MeshType::GlassWindow);
-		objectData.push_back({ model, meshIndex });
+		// Iterate cols
+		for (uint32_t z = 0; z < gridSize; ++z)
+		{
+			// Calculate the current cube's position
+			glm::vec3 pos = {
+				(float)x * spacing,
+				5.0f,
+				(float)z * spacing
+			};
+
+			glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
+			objectData.push_back({ model, meshIndex });
+		}
 	}
 
 	buffer.createObjectBuffer(objectData.size());
+	buffer.createVisibleIndexBuffer(objectData.size());
 	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData), currentFrame);
 }
 
@@ -886,97 +865,99 @@ void setupLighting(GPUBuffer& buffer, LightingData& lights)
 	lights.dirLight.direction = glm::vec4(-1.0f, -1.0f, -1.0f, 0.0f);
 	lights.dirLight.color = glm::vec4(1.0f);
 
-	lights.numPointLights = 100;
-
-	for (int i = 0; i < 100; ++i)
-	{
-		lights.pointLights[i].position = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
-
-		// Cycle through colors
-		glm::vec3 colors[] = {
-			{1.0f, 0.0f, 0.0f},   // red
-			{0.0f, 1.0f, 0.0f},   // green
-			{0.0f, 0.0f, 1.0f},   // blue
-			{1.0f, 1.0f, 0.0f},   // yellow
-			{1.0f, 0.0f, 1.0f}    // magenta
-		};
-		lights.pointLights[i].color = glm::vec4(colors[i % 5], 1.0f);
-		lights.pointLights[i].radius = 5.0f;
-	}
-
 	buffer.createLightingBuffer(sizeof(LightingData));
 	buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);
 }
 
 void updateLighting(LightingData& lights, float deltaTime)
 {
-	static float t = 0.0f;
-	t += deltaTime;
 
-	for (int i = 0; i < lights.numPointLights; ++i)
-	{
-		int ring = i / 20;  // ring index
-		int posInRing = i % 20;
-
-		// ring properties
-		float baseRadius = 2.0f + ring * 1.5f;
-		float height = 1.0f + ring * 0.8f;
-		float rotationSpeed = 1.0f - (ring * 0.15f);  // Inner rings faster
-
-		float lightPos = (posInRing / 20.0f) * glm::radians(360.0f) + t * rotationSpeed;
-
-		lights.pointLights[i].position = glm::vec4(
-			baseRadius * cos(lightPos),
-			height,
-			baseRadius * sin(lightPos),
-			1.0f
-		);
-	}
 }
 
 void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime)
 {
-	static float t = 0.0f;
-	t += deltaTime;
 
-	// Sync light casters with point lights position
-	for (int i = 0; i < lights.numPointLights; ++i)
+}
+
+std::vector<uint32_t> performFrustumCulling(std::vector<ObjectData>& objectData, const std::vector<Mesh>& allMeshes, const Frustum& frustum)
+{
+	std::vector<uint32_t> globalVisibleIndices;
+	globalVisibleIndices.reserve(objectData.size());
+
+	for (uint32_t i = 0; i < objectData.size(); ++i)
 	{
-		glm::vec3 pos = glm::vec3(lights.pointLights[i].position);
-		glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-		model = glm::rotate(model, t * 2.0f, glm::vec3(0.0f, 1.0f, 0.0f)); // Spin around y-axis
-		objectData[i].model = model;
+		auto& obj = objectData[i];
+		const auto& mesh = allMeshes[obj.meshIndex];
+
+		// Transform mesh AABB to world space and check visibility against frustum
+		AABB worldBounds = mesh.bounds.transform(obj.model);
+
+		bool visible = frustum.isBoxVisible(worldBounds.min, worldBounds.max);
+		//bool visible = frustum.isSphereVisible(worldBounds.center(), worldBounds.radius());
+
+		if (visible)
+		{
+			obj.isVisible = 1;
+			globalVisibleIndices.push_back(i);
+		}
+		else
+		{
+			obj.isVisible = 0;
+		}
 	}
+	return globalVisibleIndices;
+}
 
-	// Orbiting windows
-	glm::vec3 orbitCenter = glm::vec3(0.0f, 6.0f, -0.5f); // Pivot point for windows
-	constexpr float orbitRadius = 4.0f; // Distance from center
-	constexpr float orbitSpeed = glm::radians(45.0f); // degrees per second
-	constexpr float angularOffset = glm::radians(120.0f); // 3 window evenly spaced
+DrawLists buildDrawCommands(const std::unordered_map<uint32_t, std::vector<uint32_t>>& objectsByMesh, const std::vector<ObjectData>& objectData, const std::vector<Mesh>& allMeshes, const std::vector<Submesh>& allSubmeshes, const std::vector<Material>& allMaterials)
+{
+	DrawLists result;
+	result.opaque.resize(allMaterials.size());
+	result.transparent.resize(allMaterials.size());
 
-	for (int i = 102; i <= 104; ++i)
+	for (const auto& [meshIndex, instanceIndices] : objectsByMesh)
 	{
-		// Compute angular position
-		const int windowIndex = i - 102;
-		const float baseAngle = windowIndex * angularOffset;
-		const float currentAngle = baseAngle + t * orbitSpeed;
+		const Mesh& mesh = allMeshes[meshIndex];
 
-		// Orbit position
-		glm::vec3 orbitPos = orbitCenter + glm::vec3(
-			orbitRadius * cos(currentAngle),
-			0.0f,
-			orbitRadius * sin(currentAngle)
-		);
+		// Loop over submeshes within this mesh
+		for (uint32_t submeshIdx = 0; submeshIdx < mesh.submeshCount; ++submeshIdx)
+		{
+			const Submesh& submesh = allSubmeshes[mesh.submeshOffset + submeshIdx];
+			const Material& material = allMaterials[submesh.materialIndex];
 
-		// Build model matrix
-		glm::mat4 model = glm::translate(glm::mat4(1.0f), orbitPos);
+			// Filter visible objects
+			std::vector<uint32_t> visibleIndices;
+			visibleIndices.reserve(instanceIndices.size());
 
-		// Rotate so window faces the center, then apply orientation correction
-		model = glm::rotate(model, -currentAngle, glm::vec3(0.0f, 1.0f, 0.0f));
-		model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+			for (uint32_t idx : instanceIndices)
+			{
+				if (objectData[idx].isVisible)
+				{
+					visibleIndices.push_back(idx);
+				}
+			}
+			if (visibleIndices.empty()) continue;
 
-		objectData[i].model = model;
+			DrawCommand cmd{};
+			cmd.indexCount = submesh.indexCount;
+			cmd.instanceCount = static_cast<uint32_t>(visibleIndices.size());
+			cmd.firstIndex = submesh.indexOffset;
+			cmd.vertexOffset = static_cast<uint32_t>(mesh.vertexOffset);
+			cmd.firstInstance = 0;
+			cmd.material = material;
+
+			// Split opaque vs transparent
+			if (material.alphablending == 1)
+			{
+				cmd.objectIndices = visibleIndices;
+				result.transparent[submesh.materialIndex].push_back(cmd);
+			}
+			else
+			{
+				result.opaque[submesh.materialIndex].push_back(cmd);
+			}
+		}
 	}
+	return result;
 }
 
 void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image)

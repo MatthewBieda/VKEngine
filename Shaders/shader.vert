@@ -15,6 +15,12 @@ layout(set = 0, binding = 0) readonly buffer ObjectBuffer
 	Object objects[];
 } objectData;
 
+layout(set = 0, binding = 4) readonly buffer VisibleIndexData
+{
+	// This array holds the global index of the instance to draw
+	uint visibleIndices[];
+} visibleIndexData;
+
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inNormal;
 layout(location = 2) in vec2 inTexCoord;
@@ -31,7 +37,15 @@ layout(push_constant) uniform PushConstants
 } pc;
 
 void main() {
-	Object obj = objectData.objects[gl_InstanceIndex];
+	// Get the local index of the instance being drawn
+	uint filteredInstanceIndex = gl_InstanceIndex;
+
+	// Use the local index to look up the true global index in the Visible Index buffer
+	// This fetches the sparse global index
+	uint globalIndex = visibleIndexData.visibleIndices[filteredInstanceIndex];
+
+	// Use the true global index to fetch the correct unique instance data
+	Object obj = objectData.objects[globalIndex];
 
 	mat4 modelMat = obj.model;
 	vec4 worldPos = modelMat * vec4(inPosition, 1.0);

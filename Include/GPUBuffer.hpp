@@ -30,8 +30,14 @@ public:
 	VkDeviceSize getLightingBufferSize() const { return m_lightingBufferSize; }
 	VkDeviceSize getAlignedLightingSize() const { return m_alignedLightingSize; }
 
+	void createVisibleIndexBuffer(size_t maxObjects);
+	VkBuffer getVisibleIndexBuffer() const { return m_visibleIndexBuffer; }
+	VkDeviceSize getVisibleIndexBufferSize() const { return m_visibleIndexBufferSize; }
+	VkDeviceSize getAlignedVisibleIndexBufferSize() const { return m_alignedVisbleIndexBufferSize; }
+
 	void updateObjectBuffer(const void* data, size_t size, uint32_t currentFrame);
 	void updateLightingBuffer(const void* data, size_t size, uint32_t currentFrame);
+	void updateVisibleIndexBuffer(const void* data, size_t size, uint32_t currentFrame);
 
 private:
 	VulkanContext& m_context;
@@ -56,6 +62,13 @@ private:
 	void* m_lightingBufferMapped = nullptr;
 	VkDeviceSize m_lightingBufferSize = 0;
 	VkDeviceSize m_alignedLightingSize = 0;
+
+	// Visible Instance Index SSBO
+	VkBuffer m_visibleIndexBuffer = VK_NULL_HANDLE;
+	VmaAllocation m_visibleIndexAllocation = VK_NULL_HANDLE;
+	void* m_visibleIndexBufferMapped = nullptr;
+	VkDeviceSize m_visibleIndexBufferSize = 0;
+	VkDeviceSize m_alignedVisbleIndexBufferSize = 0;
 
 	uint32_t m_maxFramesInFlight;
 
