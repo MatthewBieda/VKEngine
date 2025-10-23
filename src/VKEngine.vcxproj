@@ -165,9 +165,11 @@
     <None Include="..\Shaders\skybox.vert" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\Include\AABB.hpp" />
     <ClInclude Include="..\Include\Camera.hpp" />
     <ClInclude Include="..\Include\Commands.hpp" />
     <ClInclude Include="..\Include\DescriptorManager.hpp" />
+    <ClInclude Include="..\Include\Frustum.hpp" />
     <ClInclude Include="..\Include\GPUBuffer.hpp" />
     <ClInclude Include="..\Include\GPUImage.hpp" />
     <ClInclude Include="..\Include\ImGuiOverlay.hpp" />

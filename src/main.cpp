@@ -30,6 +30,8 @@
 #include "ImGuiOverlay.hpp" // User Interface
 #include "Camera.hpp" // Free camera
 #include "Lights.hpp" // Light types
+#include "Frustum.hpp" // Camera frustum data
+#include "AABB.hpp" // Axis-Aligned Bounding Boxes
 
 static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 uint32_t currentFrame = 0;
@@ -58,6 +60,7 @@ struct Submesh
 	uint32_t indexOffset;
 	uint32_t indexCount;
 	uint32_t materialIndex;
+	AABB bounds;
 	uint32_t padding = 0;
 };
 
@@ -67,6 +70,7 @@ struct Mesh
 	uint32_t vertexCount;
 	uint32_t submeshOffset;
 	uint32_t submeshCount;
+	AABB bounds;
 };
 
 struct Material
@@ -89,7 +93,7 @@ struct ObjectData
 {
 	glm::mat4 model;
 	uint32_t meshIndex;
-	uint32_t padding1 = 0;
+	uint32_t isVisible; // set by frustum culling or game logic
 	uint32_t padding2 = 0;
 	uint32_t padding3 = 0;
 };
@@ -352,6 +356,8 @@ int main()
 		}
 	}
 
+	Frustum frustum;
+
 	double lastTime{};
 	while (!glfwWindowShouldClose(window))
 	{
@@ -370,6 +376,24 @@ int main()
 		updateLighting(lights, deltaTime);
 		updateObjects(objectData, lights, deltaTime);
 
+		// update view frustum
+		glm::mat4 viewProj = pc.proj * pc.view;
+		frustum.update(viewProj);
+
+		// Mark objects as invisble if they fail Frustum check
+		for (uint32_t i = 0; i < objectData.size(); ++i)
+		{
+			auto& obj = objectData[i];
+			const auto& mesh = allMeshes[obj.meshIndex];
+
+			// Transform mesh AABB to world space and check visibility against frustum
+			AABB worldBounds = mesh.bounds.transform(obj.model);
+			bool visible = frustum.isBoxVisible(worldBounds.min, worldBounds.max);
+			//bool visible = frustum.isSphereVisible(worldBounds.center(), worldBounds.radius());
+
+			obj.isVisible = visible ? 1 : 0;
+		}
+
 		// Wait for previous frame to finish
 		vkWaitForFences(context.getDevice(), 1, sync.getInFlightFencePtr(currentFrame), VK_TRUE, UINT64_MAX);
 
@@ -387,12 +411,12 @@ int main()
 			throw std::runtime_error("Failed to acquire swapchain image!");
 		}
 
-		vkResetFences(context.getDevice(), 1, sync.getInFlightFencePtr(currentFrame));
-		vkResetCommandBuffer(commands.getCommandBuffer(currentFrame), 0);
-
 		// Update GPU resources
 		buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData), currentFrame);
 		buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);
+
+		vkResetFences(context.getDevice(), 1, sync.getInFlightFencePtr(currentFrame));
+		vkResetCommandBuffer(commands.getCommandBuffer(currentFrame), 0);
 
 		// Record commands
 		VkCommandBuffer cmd = commands.getCommandBuffer(currentFrame);
@@ -466,28 +490,57 @@ int main()
 		for (uint32_t matIdx = 0; matIdx < opaqueDrawsByMaterial.size(); ++matIdx)
 		{
 			const auto& drawCmds = opaqueDrawsByMaterial[matIdx];
-
 			if (drawCmds.empty())
 			{
 				continue;
 			}
+
+			// Check if any instance is visible for this material
+			bool materialVisible = false;
+			for (const auto& cmd : drawCmds)
+			{
+				for (uint32_t i = 0; i < cmd.instanceCount; ++i)
+				{
+					if (objectData[cmd.firstInstance + i].isVisible)
+
+					{
+						materialVisible = true;
+						break;
+					}
+				}
+				if (materialVisible) break;
+			}
+			if (!materialVisible) continue; // skip cull mode & push constants
 			
 			const Material& material = drawCmds[0].material;
-
-			// Set cull mode (same for all submeshes of this material)
 			scenePipeline.setCullMode(cmd, drawCmds[0].cullMode);
 
-			// Set alpha test
 			pc.enableAlphaTest = (material.alphatest == 1) ? 1 : 0;
 			pc.diffuseTextureIndex = static_cast<int>(material.albedoTexture);
 			pc.reflectionStrength = material.reflectionStrength;
 
-			// Push constants once per material
 			vkCmdPushConstants(cmd, scenePipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
 
 			// Draw all submeshes of this material
 			for (const auto& drawCmd : drawCmds)
 			{
+				// Cull objects outside the view frustum
+				bool anyVisible = false;
+				for (uint32_t i = 0; i < drawCmd.instanceCount; ++i)
+				{
+					uint32_t instanceIndex = drawCmd.firstInstance + i;
+					if (objectData[instanceIndex].isVisible)
+					{
+						anyVisible = true;
+						break;
+					}
+				}
+				
+				if (!anyVisible)
+				{
+					continue;
+				}
+
 				vkCmdDrawIndexed(cmd, drawCmd.indexCount, drawCmd.instanceCount, drawCmd.firstIndex, drawCmd.vertexOffset, drawCmd.firstInstance
 				);
 			}
@@ -659,6 +712,7 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 	Mesh mesh{};
 	mesh.vertexOffset = static_cast<uint32_t>(allVertices.size());
 	mesh.submeshOffset = static_cast<uint32_t>(allSubmeshes.size());
+	AABB bounds;
 
 	std::unordered_map<Vertex, uint32_t> uniqueVertices{};
 
@@ -669,6 +723,7 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 	for (const auto& shape : shapes) {
 		Submesh sub{};
 		sub.indexOffset = static_cast<uint32_t>(allIndices.size());
+		AABB subBounds; 
 
 		// local material index from tinyobj
 		uint32_t matIndex = UINT32_MAX;
@@ -691,6 +746,10 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 				attrib.vertices[3 * index.vertex_index + 1],
 				attrib.vertices[3 * index.vertex_index + 2]
 			};
+
+			// Expand bounds
+			bounds.expand(vertex.pos);
+			subBounds.expand(vertex.pos);
 
 			if (index.normal_index >= 0) {
 				vertex.normal = {
@@ -718,11 +777,13 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 		}
 
 		sub.indexCount = static_cast<uint32_t>(allIndices.size()) - sub.indexOffset;
+		sub.bounds = subBounds;
 		allSubmeshes.push_back(sub);
 	}
 
 	mesh.vertexCount = static_cast<uint32_t>(allVertices.size() - mesh.vertexOffset);
 	mesh.submeshCount = static_cast<uint32_t>(allSubmeshes.size()) - mesh.submeshOffset;
+	mesh.bounds = bounds;
 
 	uint32_t meshIndex = static_cast<uint32_t>(allMeshes.size());
 	allMeshes.push_back(mesh);

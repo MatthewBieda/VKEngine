@@ -5,7 +5,7 @@ struct Object
 {
 	mat4 model;
 	uint meshIndex;
-	uint padding1;
+	uint isVisible;
 	uint padding2;
 	uint padding3;
 };
