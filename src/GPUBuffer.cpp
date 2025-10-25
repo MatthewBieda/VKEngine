@@ -173,8 +173,8 @@ void GPUBuffer::createOrResizeDebugVertexBuffer(size_t vertexCount)
 		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 		VmaAllocationCreateInfo allocInfo{};
-		allocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
-		allocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+		allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+		allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
 		VmaAllocationInfo allocationInfo{};
 

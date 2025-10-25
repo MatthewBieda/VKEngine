@@ -833,7 +833,7 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 		else if (!mtl.alpha_texname.empty())
 		{
 			// Alpha-tested transparency (e.g. grass, fences)
-			mat.twosided = 1;	
+			mat.twosided = 1;
 			mat.alphatest = 1;
 			mat.alphablending = 0;
 		}

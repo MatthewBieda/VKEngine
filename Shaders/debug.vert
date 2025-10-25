@@ -8,7 +8,6 @@ layout(location = 0) out vec4 fragColor;
 layout(push_constant) uniform PushConstants {
     mat4 view;
     mat4 proj;
-    // ... other fields don't matter for debug rendering
 } pc;
 
 void main() {
