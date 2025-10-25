@@ -3,6 +3,7 @@
 #include <vector>
 #include <array>
 #include <unordered_map>
+#include <unordered_set>
 #include <algorithm>
 #include <filesystem>
 
@@ -26,6 +27,7 @@
 #include "Pipeline.hpp" // Shaders, pipeline layout, pipeline
 #include "Sync.hpp" // Semaphores & Fences
 #include "Vertex.hpp" // Vertex definiton
+#include "DebugVertex.hpp" // Vertex data for debug AABB
 #include "Utils.hpp" // Helper functions
 #include "ImGuiOverlay.hpp" // User Interface
 #include "Camera.hpp" // Free camera
@@ -47,6 +49,12 @@ struct PushConstants
 	uint32_t diffuseTextureIndex = 0;
 	float reflectionStrength = 0.0f;
 } pc;
+
+struct DebugPushConstants
+{
+	glm::mat4 view{};
+	glm::mat4 proj{};
+} debugPC;
 
 struct LightingData
 {
@@ -118,8 +126,8 @@ struct DrawLists
 
 struct AppState 
 {
-	uint32_t windowWidth = 1920;
-	uint32_t windowHeight = 1080;
+	uint32_t windowWidth = 2560;
+	uint32_t windowHeight = 1440;
 	bool framebufferResized = false;
 	bool cursorEnabled = false;
 	bool spacePressedLastFrame = false;
@@ -158,11 +166,20 @@ void updateLighting(LightingData& lights, float deltaTime);
 void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime);
 std::vector<uint32_t> performFrustumCulling(std::vector<ObjectData>& objectData, const std::vector<Mesh>& allMeshes, const Frustum& frustum);
 DrawLists buildDrawCommands(
-	const std::unordered_map<uint32_t, std::vector<uint32_t>>& objectsByMesh,
+	const std::vector<uint32_t>& globalVisibleIndices,
 	const std::vector<ObjectData>& objectData,
 	const std::vector<Mesh>& allMeshes,
 	const std::vector<Submesh>& allSubmeshes,
 	const std::vector<Material>& allMaterials);
+
+void generateDebugGeometry(std::vector<DebugVertex>& debugVertices,
+	const std::vector<uint32_t>& globalVisibleIndices,
+	const std::vector<ObjectData>& objectData,
+	const std::vector<Mesh>& allMeshes,
+	const std::vector<Submesh>& allSubmeshes,
+	bool showMeshAABB, bool showSubmeshAABB);
+
+std::vector<DebugVertex> generateAABBLines(const AABB& aabb, const glm::vec4& color);
 
 void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image);
 
@@ -191,7 +208,7 @@ int main()
 	image.createCubemap(skyBoxFaces);
 
 	uint32_t lightCaster = loadModel("../Models/LightCaster/lightCaster.obj", image);
-	uint32_t sponza = loadModel("../Models/Sponza/sponza.obj", image);
+	uint32_t sponza = loadModel("../Models/SponzaSeparated/sponzaAABB.obj", image);
 	uint32_t alphaTestedGrass = loadModel("../Models/Grass/untitled.obj", image);
 	uint32_t glassWindow = loadModel("../Models/GlassWindow/glassWindow.obj", image);
 	uint32_t cube = loadModel("../Models/Cube/cube.obj", image);
@@ -208,6 +225,7 @@ int main()
 	Pipeline scenePipeline(context, swapchain, descriptors, sizeof(PushConstants), "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat(), PipelineType::Scene);
 	Pipeline skyboxPipeline(context, swapchain, descriptors, sizeof(PushConstants), "../Shaders/skyboxvert.spv", "../Shaders/skyboxfrag.spv", image.getDepthFormat(), PipelineType::Skybox);
 	Pipeline transparentPipeline(context, swapchain, descriptors, sizeof(PushConstants), "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat(), PipelineType::Transparent);
+	Pipeline debugPipeline(context, swapchain, descriptors, sizeof(DebugPushConstants), "../Shaders/debug_vert.spv", "../Shaders/debug_frag.spv", image.getDepthFormat(), PipelineType::DebugAABB);
 
 	// Setup syncronization and UI
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
@@ -219,6 +237,7 @@ int main()
 	VkDebugUtilsLabelEXT skyboxPassLabel = makeLabel("Skybox Pass", 0.3f, 0.7f, 1.0f);
 	VkDebugUtilsLabelEXT transparentPassLabel = makeLabel("Transparent Pass", 1.0f, 0.5f, 0.0f);
 	VkDebugUtilsLabelEXT imguiPassLabel = makeLabel("ImGui Pass", 1.0f, 0.0f, 1.0f);
+	VkDebugUtilsLabelEXT debugPassLabel = makeLabel("Debug Wireframe Pass", 1.0f, 1.0f, 0.0f);
 
 	// Pre-render loop struct initialization
 	VkCommandBufferBeginInfo beginInfo{};
@@ -372,7 +391,7 @@ int main()
 		// Choose the frustum to use for culling and perform culling, then build draw lists based on visibility
 		const Frustum& cullingFrustum = imgui.freezeFrustum ? frozenFrustum : frustum;
 		std::vector<uint32_t> globalVisibleIndices = performFrustumCulling(objectData, allMeshes, cullingFrustum);
-		DrawLists drawLists = buildDrawCommands(objectsByMesh, objectData, allMeshes, allSubmeshes, allMaterials);
+		DrawLists drawLists = buildDrawCommands(globalVisibleIndices, objectData, allMeshes, allSubmeshes, allMaterials);
 
 		// Wait for previous frame to finish
 		vkWaitForFences(context.getDevice(), 1, sync.getInFlightFencePtr(currentFrame), VK_TRUE, UINT64_MAX);
@@ -588,11 +607,44 @@ int main()
 			transparentPipeline.setCullMode(cmd, VK_CULL_MODE_BACK_BIT);
 			vkCmdDrawIndexed(cmd, drawCmd.indexCount, 1, drawCmd.firstIndex, drawCmd.vertexOffset, visibleIndex);
 		}
-
 		vkCmdEndDebugUtilsLabelEXT(cmd);
+
+		// 4. Debug wireframe pass
+		if (imgui.showMeshAABB || imgui.showSubmeshAABB)
+		{
+			std::vector<DebugVertex> debugVertices;
+			generateDebugGeometry(debugVertices, globalVisibleIndices, objectData, allMeshes, allSubmeshes,
+				imgui.showMeshAABB, imgui.showSubmeshAABB);
+
+			if (!debugVertices.empty())
+			{
+				// Safely wait for GPU before uploading data. Inefficient but just for debugging.
+				vkDeviceWaitIdle(context.getDevice());
+				buffer.createOrResizeDebugVertexBuffer(debugVertices.size());
+				memcpy(buffer.getDebugBufferMapped(), debugVertices.data(), debugVertices.size() * sizeof(DebugVertex));
+
+				vkCmdBeginDebugUtilsLabelEXT(cmd, &debugPassLabel);
+				vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, debugPipeline.getPipeline());
+				debugPipeline.setViewport(cmd, viewport);
+				debugPipeline.setScissor(cmd, scissor);
+
+				VkBuffer debugVertexBuffers[] = { buffer.getDebugVertexBuffer() };
+				VkDeviceSize debugOffsets[] = { 0 };
+				vkCmdBindVertexBuffers(cmd, 0, 1, debugVertexBuffers, debugOffsets);
+
+				debugPC.view = pc.view;
+				debugPC.proj = pc.proj;
+
+				vkCmdPushConstants(cmd, debugPipeline.getLayout(),
+					VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(debugPC), &debugPC);
+
+				vkCmdDraw(cmd, static_cast<uint32_t>(debugVertices.size()), 1, 0, 0);
+				vkCmdEndDebugUtilsLabelEXT(cmd);
+			}
+		}
 		vkCmdEndRendering(cmd);
 
-		// 4. UI pass
+		// 5. UI pass
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &imguiPassLabel);
 		imgui.render();
 
@@ -781,7 +833,7 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 		else if (!mtl.alpha_texname.empty())
 		{
 			// Alpha-tested transparency (e.g. grass, fences)
-			mat.twosided = 1;
+			mat.twosided = 1;	
 			mat.alphatest = 1;
 			mat.alphablending = 0;
 		}
@@ -824,11 +876,41 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 			glm::vec3 pos = {
 				(float)x * spacing,
 				0.0f,
-				(float)z* spacing
+				(float)z * spacing
 			};
 
-			glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);			
+			glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
 			objectData.push_back({ model, meshIndex });
+		}
+	}
+
+	// MASSIVE 20x20x25 CUBE GRID (10,000 objects)
+	spacing = 1.0f; // Very dense spacing
+	uint32_t sizeX = 20;
+	uint32_t sizeY = 20;
+	uint32_t sizeZ = 25;
+	meshIndex = static_cast<uint32_t>(MeshType::Cube);
+
+	// Initial offset to place the grid away from the origin
+	glm::vec3 baseOffset = { 0.0f, 10.0f, 0.0f };
+
+	for (uint32_t x = 0; x < sizeX; ++x)
+	{
+		for (uint32_t y = 0; y < sizeY; ++y)
+		{
+			for (uint32_t z = 0; z < sizeZ; ++z)
+			{
+				glm::vec3 pos = {
+					baseOffset.x + (float)x * spacing,
+					baseOffset.y + (float)y * spacing,
+					baseOffset.z + (float)z * spacing
+				};
+
+				glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
+				model = glm::scale(model, glm::vec3(0.4f));
+
+				objectData.push_back({ model, meshIndex });
+			}
 		}
 	}
 
@@ -855,6 +937,12 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 		}
 	}
 
+	// Add a sponza
+	glm::vec3 pos = { 50.0f, -10.0f, 5.0f };
+	glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
+	meshIndex = static_cast<uint32_t>(MeshType::Sponza);
+	objectData.push_back({ model, meshIndex });
+
 	buffer.createObjectBuffer(objectData.size());
 	buffer.createVisibleIndexBuffer(objectData.size());
 	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData), currentFrame);
@@ -876,7 +964,42 @@ void updateLighting(LightingData& lights, float deltaTime)
 
 void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime)
 {
+	// Static time variable for oscillation
+	static float t = 0.0f;
+	t += deltaTime;
 
+	// Pure rotation matrix for this frame
+	glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(60.0f * deltaTime), glm::vec3(0.0f, 1.0f, 0.0f));
+	// Calculate a pulsing scale factor between 1.0 and 2.0
+	float scaleFactor = 1.5f + 0.5f * glm::sin(t * 2.0f); // S = [1.0, 2.0]
+
+	// Reference object and extract world position
+	glm::mat4& cubeModel = objectData[0].model;
+	glm::vec3 cubePos = glm::vec3(cubeModel[3]);
+	
+	// Oscillate the cube up and down
+	float initialY = 0.0f;
+	cubePos.y = initialY + 3.0f * glm::sin(t * 0.5f);
+
+	// Uniform Scale Extraction: Calculate the length of the first basis vector (X-axis)
+	float oldScale = glm::length(glm::vec3(cubeModel[0]));
+
+	// Normalize the rotation/scale part (removes scale component)
+	cubeModel[0] = glm::vec4(glm::normalize(glm::vec3(cubeModel[0])), 0.0f);
+	cubeModel[1] = glm::vec4(glm::normalize(glm::vec3(cubeModel[1])), 0.0f);
+	cubeModel[2] = glm::vec4(glm::normalize(glm::vec3(cubeModel[2])), 0.0f);
+	cubeModel[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f); // Remove translation
+
+	// Apply pure rotation (on the left for local spin)
+	cubeModel = rotationMatrix * cubeModel;
+
+	// Restore new uniform scale
+	cubeModel[0] *= scaleFactor;
+	cubeModel[1] *= scaleFactor;
+	cubeModel[2] *= scaleFactor;
+
+	// Restore translation
+	cubeModel[3] = glm::vec4(cubePos, 1.0f);
 }
 
 std::vector<uint32_t> performFrustumCulling(std::vector<ObjectData>& objectData, const std::vector<Mesh>& allMeshes, const Frustum& frustum)
@@ -886,76 +1009,117 @@ std::vector<uint32_t> performFrustumCulling(std::vector<ObjectData>& objectData,
 
 	for (uint32_t i = 0; i < objectData.size(); ++i)
 	{
-		auto& obj = objectData[i];
-		const auto& mesh = allMeshes[obj.meshIndex];
+		const auto& mesh = allMeshes[objectData[i].meshIndex];
 
 		// Transform mesh AABB to world space and check visibility against frustum
-		AABB worldBounds = mesh.bounds.transform(obj.model);
+		AABB worldBounds = mesh.bounds.transform(objectData[i].model);
 
 		bool visible = frustum.isBoxVisible(worldBounds.min, worldBounds.max);
 		//bool visible = frustum.isSphereVisible(worldBounds.center(), worldBounds.radius());
 
 		if (visible)
 		{
-			obj.isVisible = 1;
+			objectData[i].isVisible = 1;
 			globalVisibleIndices.push_back(i);
 		}
 		else
 		{
-			obj.isVisible = 0;
+			objectData[i].isVisible = 0;
 		}
 	}
 	return globalVisibleIndices;
 }
 
-DrawLists buildDrawCommands(const std::unordered_map<uint32_t, std::vector<uint32_t>>& objectsByMesh, const std::vector<ObjectData>& objectData, const std::vector<Mesh>& allMeshes, const std::vector<Submesh>& allSubmeshes, const std::vector<Material>& allMaterials)
+DrawLists buildDrawCommands(const std::vector<uint32_t>& globalVisibleIndices, const std::vector<ObjectData>& objectData, const std::vector<Mesh>& allMeshes, const std::vector<Submesh>& allSubmeshes, const std::vector<Material>& allMaterials)
 {
 	DrawLists result;
 	result.opaque.resize(allMaterials.size());
 	result.transparent.resize(allMaterials.size());
 
-	for (const auto& [meshIndex, instanceIndices] : objectsByMesh)
+	// Group visible objects by mesh (ONE TIME)
+	std::unordered_map<uint32_t, std::vector<uint32_t>> visibleByMesh;
+	for (uint32_t objIdx : globalVisibleIndices)
 	{
+		uint32_t meshIdx = objectData[objIdx].meshIndex;
+		visibleByMesh[meshIdx].push_back(objIdx);
+	}
+
+	// Build sorted list of visible mesh indices for correct offset ordering
+	std::vector<uint32_t> sortedVisibleMeshIndices;
+	std::unordered_set<uint32_t> seenMeshes;
+
+	for (uint32_t objIdx : globalVisibleIndices)
+	{
+		uint32_t meshIdx = objectData[objIdx].meshIndex;
+		if (seenMeshes.insert(meshIdx).second)
+		{
+			sortedVisibleMeshIndices.push_back(meshIdx);
+		}
+	}
+
+	// Tracks where each mesh's instances start in the globalVisibleIndices buffer
+	uint32_t globalInstanceOffset = 0;
+
+	// Process each mesh in the order they first appear in objectData
+	for (uint32_t meshIndex : sortedVisibleMeshIndices)
+	{
+		const auto& visibleIndices = visibleByMesh[meshIndex];
 		const Mesh& mesh = allMeshes[meshIndex];
 
-		// Loop over submeshes within this mesh
+		uint32_t visibleInstanceCount = static_cast<uint32_t>(visibleIndices.size());
+
+		// Process each submesh(different geometry parts with potentially different materials)
 		for (uint32_t submeshIdx = 0; submeshIdx < mesh.submeshCount; ++submeshIdx)
 		{
 			const Submesh& submesh = allSubmeshes[mesh.submeshOffset + submeshIdx];
 			const Material& material = allMaterials[submesh.materialIndex];
 
-			// Filter visible objects
-			std::vector<uint32_t> visibleIndices;
-			visibleIndices.reserve(instanceIndices.size());
-
-			for (uint32_t idx : instanceIndices)
-			{
-				if (objectData[idx].isVisible)
-				{
-					visibleIndices.push_back(idx);
-				}
-			}
-			if (visibleIndices.empty()) continue;
-
+			// Construct the draw command
 			DrawCommand cmd{};
 			cmd.indexCount = submesh.indexCount;
-			cmd.instanceCount = static_cast<uint32_t>(visibleIndices.size());
+			cmd.instanceCount = visibleInstanceCount;
 			cmd.firstIndex = submesh.indexOffset;
 			cmd.vertexOffset = static_cast<uint32_t>(mesh.vertexOffset);
-			cmd.firstInstance = 0;
 			cmd.material = material;
 
 			// Split opaque vs transparent
 			if (material.alphablending == 1)
 			{
+				cmd.firstInstance = 0; // we will draw transparent objects individually
 				cmd.objectIndices = visibleIndices;
 				result.transparent[submesh.materialIndex].push_back(cmd);
 			}
 			else
 			{
+				cmd.firstInstance = globalInstanceOffset; // Same offset for ALL submeshes of this mesh
+
+				// Optimization: Merge with previous draw if possible (reduces draw call count)
+				auto& opaqueList = result.opaque[submesh.materialIndex];
+				if (!opaqueList.empty())
+				{
+					DrawCommand& lastCmd = opaqueList.back();
+
+					// Can merge if: same mesh with contiguous index range
+					bool canMerge = (lastCmd.vertexOffset == cmd.vertexOffset &&
+						lastCmd.instanceCount == cmd.instanceCount &&
+						lastCmd.firstInstance == cmd.firstInstance &&
+						lastCmd.firstIndex + lastCmd.indexCount == cmd.firstIndex);
+
+					if (canMerge)
+					{
+						// Just extend the previous command's index range
+						lastCmd.indexCount += cmd.indexCount;
+						continue; // Skip adding a new command
+					}
+				}
+
 				result.opaque[submesh.materialIndex].push_back(cmd);
 			}
 		}
+
+		// Advance the global offset by the number of visible instances of this mesh
+		// This ensures the next mesh's instanaces start at the correct position in the buffer
+		globalInstanceOffset += visibleInstanceCount;
 	}
 	return result;
 }
@@ -1067,4 +1231,94 @@ GLFWwindow* createWindow(AppState& appState)
 	glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 
 	return window;
+}
+
+void generateDebugGeometry(std::vector<DebugVertex>& debugVertices,
+	const std::vector<uint32_t>& globalVisibleIndices,
+	const std::vector<ObjectData>& objectData,
+	const std::vector<Mesh>& allMeshes,
+	const std::vector<Submesh>& allSubmeshes,
+	bool showMeshAABB, bool showSubmeshAABB)
+{
+	debugVertices.clear();
+
+	for (uint32_t objectIndex: globalVisibleIndices)
+	{
+		const auto& obj = objectData[objectIndex];
+		const Mesh& mesh = allMeshes[obj.meshIndex];
+
+		// Draw mesh-level AABB in red
+		if (showMeshAABB)
+		{
+			AABB worldBounds = mesh.bounds.transform(obj.model);
+			auto lines = generateAABBLines(worldBounds, glm::vec4(1.0f, 0.0f, 0.0f, 1.0f));
+			debugVertices.insert(debugVertices.end(), lines.begin(), lines.end());
+		}
+
+		// Draw submesh-level AABBs in green
+		if (showSubmeshAABB)
+		{
+			for (uint32_t i = 0; i < mesh.submeshCount; ++i)
+			{
+				const Submesh& submesh = allSubmeshes[mesh.submeshOffset + i];
+				AABB worldSubBounds = submesh.bounds.transform(obj.model);
+				auto lines = generateAABBLines(worldSubBounds, glm::vec4(0.0f, 1.0f, 0.0f, 1.0f));
+				debugVertices.insert(debugVertices.end(), lines.begin(), lines.end());
+			}
+		}
+	}
+}
+
+std::vector<DebugVertex> generateAABBLines(const AABB& aabb, const glm::vec4& color)
+{
+	std::vector<DebugVertex> lines;
+	lines.reserve(24); // 12 edges * 2 vertices per edge
+
+	glm::vec3 corners[8] = {
+		{aabb.min.x, aabb.min.y, aabb.min.z}, // 0
+		{aabb.max.x, aabb.min.y, aabb.min.z}, // 1
+		{aabb.max.x, aabb.max.y, aabb.min.z}, // 2
+		{aabb.min.x, aabb.max.y, aabb.min.z}, // 3
+		{aabb.min.x, aabb.min.y, aabb.max.z}, // 4
+		{aabb.max.x, aabb.min.y, aabb.max.z}, // 5
+		{aabb.max.x, aabb.max.y, aabb.max.z}, // 6
+		{aabb.min.x, aabb.max.y, aabb.max.z}  // 7
+	};
+
+	// Bottom face (z = min)
+	lines.push_back({ corners[0], color }); lines.push_back({ corners[1], color });
+	lines.push_back({ corners[1], color }); lines.push_back({ corners[2], color });
+	lines.push_back({ corners[2], color }); lines.push_back({ corners[3], color });
+	lines.push_back({ corners[3], color }); lines.push_back({ corners[0], color });
+
+	// Top face (z = max)
+	lines.push_back({ corners[4], color }); lines.push_back({ corners[5], color });
+	lines.push_back({ corners[5], color }); lines.push_back({ corners[6], color });
+	lines.push_back({ corners[6], color }); lines.push_back({ corners[7], color });
+	lines.push_back({ corners[7], color }); lines.push_back({ corners[4], color });
+
+	// Vertical edges
+	lines.push_back({ corners[0], color }); lines.push_back({ corners[4], color });
+	lines.push_back({ corners[1], color }); lines.push_back({ corners[5], color });
+	lines.push_back({ corners[2], color }); lines.push_back({ corners[6], color });
+	lines.push_back({ corners[3], color }); lines.push_back({ corners[7], color });
+
+	return lines;
+}
+
+// Use AABBs to do 3D collision checks
+AABB get_world_aabb(const ObjectData& obj, const Mesh& mesh)
+{
+	return mesh.bounds.transform(obj.model);
+}
+
+bool check_collision(const ObjectData& objA, const ObjectData& objB, const std::vector<Mesh>& allMeshes)
+{
+	const Mesh& meshA = allMeshes[objA.meshIndex];
+	const Mesh& meshB = allMeshes[objB.meshIndex];
+
+	AABB worldA = get_world_aabb(objA, meshA);
+	AABB worldB = get_world_aabb(objB, meshB);
+
+	return worldA.overlaps(worldB);
 }

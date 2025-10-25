@@ -5,6 +5,7 @@
 #include "Swapchain.hpp"
 #include "DescriptorManager.hpp"
 #include "Vertex.hpp"
+#include "DebugVertex.hpp"
 
 #include <fstream>
 #include <iostream>
@@ -117,8 +118,11 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 	dynamicStateInfo.pDynamicStates = dynamicStates.data();
 
 	// Fixed-function state (vertex input, input assembly, viewport, rasterizer, multisample, color blend)
-	auto bindingDescription = Vertex::getBindingDescription();
-	auto attributeDescriptions = Vertex::getAttributeDescription();
+	VkVertexInputBindingDescription bindingDescription = Vertex::getBindingDescription();
+	std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions = Vertex::getAttributeDescription();
+
+	VkVertexInputBindingDescription debugBinding;
+	std::array<VkVertexInputAttributeDescription, 2> debugAttributes;
 
 	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 	vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -267,6 +271,24 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 			// Disable alpha to coverage (used for foliage, not smooth transparency)
 			multisamplingInfo.alphaToCoverageEnable = VK_FALSE;
 			break;
+
+		case PipelineType::DebugAABB:
+			// Retrieve the debug data using pre-declared variables
+			debugBinding = DebugVertex::getBindingDescription();
+			debugAttributes = DebugVertex::getAttributeDescription();
+
+			vertexInputInfo.vertexBindingDescriptionCount = 1;
+			vertexInputInfo.pVertexBindingDescriptions = &debugBinding;
+			vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(debugAttributes.size());
+			vertexInputInfo.pVertexAttributeDescriptions = debugAttributes.data();
+
+			inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+			rasterizerInfo.polygonMode = VK_POLYGON_MODE_LINE;
+			rasterizerInfo.cullMode = VK_CULL_MODE_NONE;
+			depthStencil.depthTestEnable = VK_TRUE;
+			depthStencil.depthWriteEnable = VK_FALSE;
+			depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+			colorBlendAttachment.blendEnable = VK_FALSE;
 	}
 
 	if (vkCreateGraphicsPipelines(m_context.getDevice(), VK_NULL_HANDLE, 1, &graphicsPipelineInfo, nullptr, &m_pipeline) != VK_SUCCESS)
@@ -289,6 +311,11 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 		case PipelineType::Transparent:
 			std::cout << "Graphics Pipeline (Transparent) created successfully" << std::endl;
 			nameObject(m_context.getDevice(), m_pipeline, "GraphicsPipeline_Transparent");
+			break;
+
+		case PipelineType::DebugAABB:
+			std::cout << "Graphics Pipeline (DebugAABB) created successfully" << std::endl;
+			nameObject(m_context.getDevice(), m_pipeline, "GraphicsPipeline_DebugAABB");
 			break;
 	}
 

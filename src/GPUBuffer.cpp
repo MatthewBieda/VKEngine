@@ -4,6 +4,8 @@
 #include "VulkanContext.hpp"
 #include "Commands.hpp"
 
+#include "DebugVertex.hpp"
+
 #include <stdexcept>
 #include <iostream>
 
@@ -21,6 +23,7 @@ GPUBuffer::~GPUBuffer()
 	vmaDestroyBuffer(m_context.getAllocator(), m_objectBuffer, m_objectAllocation);
 	vmaDestroyBuffer(m_context.getAllocator(), m_lightingBuffer, m_lightingAllocation);
 	vmaDestroyBuffer(m_context.getAllocator(), m_visibleIndexBuffer, m_visibleIndexAllocation);
+	vmaDestroyBuffer(m_context.getAllocator(), m_debugVertexBuffer, m_debugVertexAllocation);
 }
 
 void GPUBuffer::updateObjectBuffer(const void* data, size_t size, uint32_t currentFrame)
@@ -147,6 +150,39 @@ void GPUBuffer::createIndexBuffer(const std::vector<uint32_t>& indices)
 
 	// cleanup
 	vmaDestroyBuffer(m_context.getAllocator(), stagingBuffer, stagingAllocation);
+}
+
+void GPUBuffer::createOrResizeDebugVertexBuffer(size_t vertexCount)
+{
+	VkDeviceSize newSize = vertexCount * sizeof(DebugVertex);
+
+	// Recreate if too small
+	if (m_debugVertexBuffer == VK_NULL_HANDLE || newSize > m_debugVertexCapacity)
+	{
+		if (m_debugVertexBuffer != VK_NULL_HANDLE)
+		{
+			vmaDestroyBuffer(m_context.getAllocator(), m_debugVertexBuffer, m_debugVertexAllocation);
+		}
+
+		m_debugVertexCapacity = newSize * 2; // Add some headroom
+
+		VkBufferCreateInfo bufferInfo{};
+		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufferInfo.size = m_debugVertexCapacity;
+		bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		VmaAllocationCreateInfo allocInfo{};
+		allocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+		allocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+		VmaAllocationInfo allocationInfo{};
+
+		vmaCreateBuffer(m_context.getAllocator(), &bufferInfo, &allocInfo,
+			&m_debugVertexBuffer, &m_debugVertexAllocation, &allocationInfo);
+
+		m_debugBufferMapped = allocationInfo.pMappedData;
+	}
 }
 
 void GPUBuffer::createLightingBuffer(VkDeviceSize lightingBufferSize)

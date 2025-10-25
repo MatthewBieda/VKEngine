@@ -159,6 +159,8 @@
   <ItemGroup>
     <None Include="..\.gitignore" />
     <None Include="..\README.md" />
+    <None Include="..\Shaders\debug.frag" />
+    <None Include="..\Shaders\debug.vert" />
     <None Include="..\Shaders\shader.frag" />
     <None Include="..\Shaders\shader.vert" />
     <None Include="..\Shaders\skybox.frag" />
@@ -168,6 +170,7 @@
     <ClInclude Include="..\Include\AABB.hpp" />
     <ClInclude Include="..\Include\Camera.hpp" />
     <ClInclude Include="..\Include\Commands.hpp" />
+    <ClInclude Include="..\Include\DebugVertex.hpp" />
     <ClInclude Include="..\Include\DescriptorManager.hpp" />
     <ClInclude Include="..\Include\Frustum.hpp" />
     <ClInclude Include="..\Include\GPUBuffer.hpp" />

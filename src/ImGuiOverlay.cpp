@@ -173,6 +173,11 @@ void ImGuiOverlay::drawUI()
 
 	ImGui::Checkbox("Freeze Camera Frustum", &freezeFrustum);
 
+	ImGui::Separator();
+	ImGui::Text("Debug Visualization");
+	ImGui::Checkbox("Show Mesh AABB (Red)", &showMeshAABB);
+	ImGui::Checkbox("Show Submesh AABB (Green)", &showSubmeshAABB);
+
 	ImGui::End();
 }
 

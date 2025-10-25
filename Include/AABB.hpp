@@ -44,4 +44,27 @@ struct AABB
 	{
 		return glm::length(max - min) * 0.5f;
 	}
+
+	bool overlaps(const AABB& other) const
+	{
+		// Check for non-overlap (separation) along the X-axis
+		// If the left side of 'this' is past the right side of 'other', OR
+		// if the right side of 'this' is past the left side of 'other', they don't overlap.
+		if (this->max.x < other.min.x || this->min.x > other.max.x) {
+			return false;
+		}
+
+		// Check for non-overlap (separation) along the Y-axis
+		if (this->max.y < other.min.y || this->min.y > other.max.y) {
+			return false;
+		}
+
+		// Check for non-overlap (separation) along the Z-axis
+		if (this->max.z < other.min.z || this->min.z > other.max.z) {
+			return false;
+		}
+
+		// If we haven't returned false, it means the boxes overlap on all three axes.
+		return true;
+	}
 };

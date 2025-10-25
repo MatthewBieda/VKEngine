@@ -86,6 +86,12 @@
     <None Include="..\Shaders\skybox.vert">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="..\Shaders\debug.vert">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\Shaders\debug.frag">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Include\VulkanContext.hpp">
@@ -131,6 +137,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\Include\AABB.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Include\DebugVertex.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

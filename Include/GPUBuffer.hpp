@@ -19,6 +19,11 @@ public:
 	VkBuffer getVertexBuffer() const { return m_vertexBuffer; }
 	VkBuffer getIndexBuffer() const { return m_indexBuffer; }
 
+	void createOrResizeDebugVertexBuffer(size_t vertexCount);
+	VkBuffer getDebugVertexBuffer() const { return m_debugVertexBuffer; }
+	VmaAllocation getDebugVertexAllocation() const { return m_debugVertexAllocation; }
+	void* getDebugBufferMapped() const { return m_debugBufferMapped; }
+
 	void createObjectBuffer(size_t maxObjects);
 	VkBuffer getObjectBuffer() const { return m_objectBuffer; }
 	size_t getObjectBufferSize() const { return m_objectBufferSize; }
@@ -48,6 +53,12 @@ private:
 
 	VkBuffer m_indexBuffer = VK_NULL_HANDLE;
 	VmaAllocation m_indexAllocation = VK_NULL_HANDLE;
+
+	// Debug buffer resources
+	VkBuffer m_debugVertexBuffer = VK_NULL_HANDLE;
+	VmaAllocation m_debugVertexAllocation = VK_NULL_HANDLE;
+	size_t m_debugVertexCapacity = 0;
+	void* m_debugBufferMapped = nullptr;
 
 	// Per-instance data SSBO
 	VkBuffer m_objectBuffer = VK_NULL_HANDLE;
