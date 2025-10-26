@@ -188,6 +188,7 @@
     <None Include="..\Shaders\skybox.vert" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\Include\AABB.hpp" />
     <ClInclude Include="..\Include\Camera.hpp" />
     <ClInclude Include="..\Include\Commands.hpp" />
     <ClInclude Include="..\Include\DescriptorManager.hpp" />

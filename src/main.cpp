@@ -15,9 +15,11 @@
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define TINYOBJLOADER_IMPLEMENTATION
+#define GLM_ENABLE_EXPERIMENTAL
 
 #include "glm.hpp"
 #include "gtc/matrix_transform.hpp"
+#include <gtx/string_cast.hpp>
 #include "chrono"
 #include <tiny_obj_loader.h>
 
@@ -37,33 +39,10 @@
 #include "ImGuiOverlay.hpp" // User Interface
 #include "Camera.hpp" // Free camera
 #include "Lights.hpp" // Light types
+#include "AABB.hpp" // Acis-Aligned Bounding Boxes
 
 static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 uint32_t currentFrame = 0;
-
-// game physics test
-struct BoundingBox
-{
-	glm::vec3 min;
-	glm::vec3 max;
-};
-
-inline BoundingBox computeBoundingBox(const glm::vec3& center, float size = 0.5f)
-{
-	float halfExtent = size / 2.0f;
-	return
-	{
-		center - glm::vec3(halfExtent),
-		center + glm::vec3(halfExtent)
-	};
-}
-
-bool AABBIntersection(const BoundingBox& a, const BoundingBox& b)
-{
-	return (a.min.x <= b.max.x && a.max.x >= b.min.x) &&
-		   (a.min.y <= b.max.y && a.max.y >= b.min.y) &&
-		   (a.min.z <= b.max.z && a.max.z >= b.min.z);
-}
 
 // Track collected rings & game state
 int ringsCollected = 0;
@@ -110,6 +89,7 @@ struct Submesh
 	uint32_t indexOffset;
 	uint32_t indexCount;
 	uint32_t materialIndex;
+	AABB bounds; // submesh-level AABB will be used for collision
 	uint32_t padding = 0;
 };
 
@@ -119,6 +99,7 @@ struct Mesh
 	uint32_t vertexCount;
 	uint32_t submeshOffset;
 	uint32_t submeshCount;
+	AABB bounds; // used for frustum culling
 };
 
 struct Material
@@ -149,8 +130,8 @@ std::vector<ObjectData> objectData{};
 
 struct AppState 
 {
-	uint32_t windowWidth = 1920;
-	uint32_t windowHeight = 1080;
+	uint32_t windowWidth = 2560;
+	uint32_t windowHeight = 1440;
 	bool framebufferResized = false;
 	bool cursorEnabled = false;
 	bool spacePressedLastFrame = false;
@@ -185,6 +166,7 @@ void setupLighting(GPUBuffer& buffer, LightingData& lights);
 void updateLighting(LightingData& lights, float deltaTime);
 void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, GLFWwindow* window, float deltaTime);
 void updatePhysics(std::vector<ObjectData>& objectData);
+bool check_collision(const ObjectData& objA, const ObjectData& objB, const std::vector<Mesh>& allMeshes);
 
 void resetGame();
 
@@ -227,7 +209,7 @@ int main()
 	image.createCubemap(skyBoxFaces);
 
 	uint32_t lightCaster = loadModel("../Models/LightCaster/lightCaster.obj", image);
-	uint32_t sponza = loadModel("../Models/Sponza/sponza.obj", image);
+	uint32_t sponza = loadModel("../Models/Sponza/sponzaAABB.obj", image);
 	uint32_t cube = loadModel("../Models/Cube/cube.obj", image);
 	uint32_t ring = loadModel("../Models/Ring/ring.obj", image);
 
@@ -847,6 +829,7 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 	Mesh mesh{};
 	mesh.vertexOffset = static_cast<uint32_t>(allVertices.size());
 	mesh.submeshOffset = static_cast<uint32_t>(allSubmeshes.size());
+	AABB bounds;
 
 	std::unordered_map<Vertex, uint32_t> uniqueVertices{};
 
@@ -857,6 +840,7 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 	for (const auto& shape : shapes) {
 		Submesh sub{};
 		sub.indexOffset = static_cast<uint32_t>(allIndices.size());
+		AABB subBounds;
 
 		// local material index from tinyobj
 		uint32_t matIndex = UINT32_MAX;
@@ -879,6 +863,10 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 				attrib.vertices[3 * index.vertex_index + 1],
 				attrib.vertices[3 * index.vertex_index + 2]
 			};
+
+			// Expand bounds
+			bounds.expand(vertex.pos);
+			subBounds.expand(vertex.pos);
 
 			if (index.normal_index >= 0) {
 				vertex.normal = {
@@ -906,11 +894,13 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 		}
 
 		sub.indexCount = static_cast<uint32_t>(allIndices.size()) - sub.indexOffset;
+		sub.bounds = subBounds;
 		allSubmeshes.push_back(sub);
 	}
 
 	mesh.vertexCount = static_cast<uint32_t>(allVertices.size() - mesh.vertexOffset);
 	mesh.submeshCount = static_cast<uint32_t>(allSubmeshes.size()) - mesh.submeshOffset;
+	mesh.bounds = bounds;
 
 	uint32_t meshIndex = static_cast<uint32_t>(allMeshes.size());
 	allMeshes.push_back(mesh);
@@ -934,7 +924,7 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 		mat.specularTexture = 0;
 
 		if (mtl.dissolve < 1.0f)
-		{	
+		{
 			// Alpha-blended transparency (e.g. glass)
 			mat.twosided = 1;
 			mat.alphatest = 0;
@@ -1113,25 +1103,80 @@ void updatePhysics(std::vector<ObjectData>& objectData)
 {
 	if (gameState != GameState::Playing) return;
 
-	glm::vec3 cubePos = glm::vec3(objectData[1].model[3]);
-	BoundingBox cubeBox = computeBoundingBox(cubePos);
+	// Sponza is objectData[0]
+	const ObjectData& sponzaObj = objectData[0];
+	const Mesh& sponzaMesh = allMeshes[sponzaObj.meshIndex];
 
+	// Player is objectData[1]
+	ObjectData& playerObj = objectData[1];
+	const Mesh& playerMesh = allMeshes[playerObj.meshIndex];
+
+	// Keep the last non-colliding player transform so we can revert on penetration
+	// static so it persists across frames
+	static glm::mat4 lastSafePlayerModel = playerObj.model;
+
+	// Compute player's current world AABB
+	AABB playerAABB = playerMesh.bounds.transform(playerObj.model);
+
+	// Check player vs every submesh of Sponza
+	bool playerPenetrating = false;
+	const uint32_t submeshStart = sponzaMesh.submeshOffset;
+	const uint32_t submeshEnd = sponzaMesh.submeshOffset + sponzaMesh.submeshCount;
+
+	const uint32_t BAD_SUBMESH_INDEX = submeshStart + 315; // Global Index 316
+	const uint32_t BAD_SUBMESH_INDEX2 = submeshStart + 319; // Global Index 316
+	const uint32_t BAD_SUBMESH_INDEX3 = submeshStart + 350; // Global Index 316
+	const uint32_t BAD_SUBMESH_INDEX4 = submeshStart + 26; // Global Index 316
+
+	for (uint32_t si = submeshStart; si < submeshEnd; ++si)
+	{
+		const Submesh& sub = allSubmeshes[si];
+
+		// Temporarily skip the submesh that is causing the large bounding box
+		if (si == BAD_SUBMESH_INDEX || si == BAD_SUBMESH_INDEX2 || si == BAD_SUBMESH_INDEX3 || si == BAD_SUBMESH_INDEX4) continue;
+
+		// transform the submesh bounds into world space using Sponza's model matrix
+		AABB worldSubAABB = sub.bounds.transform(sponzaObj.model);
+
+		if (playerAABB.overlaps(worldSubAABB))
+		{
+			playerPenetrating = true;
+			break;
+		}
+	}
+
+	if (playerPenetrating)
+	{
+		// Kill movement by reverting to the last safe transform
+		playerObj.model = lastSafePlayerModel;
+
+		// Optionally zero camera velocity or movement deltas here if you keep them.
+		// Example (if you have a velocity): playerVelocity = glm::vec3(0.0f);
+
+		// Recompute player's AABB for the reverted position (useful if subsequent logic reads it)
+		playerAABB = playerMesh.bounds.transform(playerObj.model);
+	}
+	else
+	{
+		// No collision: accept this as the new safe transform
+		lastSafePlayerModel = playerObj.model;
+	}
+
+	// ----- Ring collection-----
 	for (int i = 2; i <= 5; ++i)
 	{
 		if (objectData[i].collected != 0)
-		{
 			continue;
-		}
 
-		glm::vec3 ringPos = glm::vec3(objectData[i].model[3]);
-		BoundingBox ringBox = computeBoundingBox(ringPos);
+		// ring AABB
+		const Mesh& ringMesh = allMeshes[objectData[i].meshIndex];
+		AABB ringAABB = ringMesh.bounds.transform(objectData[i].model);
 
-		if (AABBIntersection(cubeBox, ringBox))
+		if (playerAABB.overlaps(ringAABB))
 		{
 			gSoLoud.play(gWave2);
 			objectData[i].collected = 1;
 			++ringsCollected;
-			std::cout << "Ring collected: Total: " << ringsCollected << std::endl;
 
 			if (objectData[i].soundHandle != 0)
 			{
@@ -1233,4 +1278,21 @@ GLFWwindow* createWindow(AppState& appState)
 	glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 
 	return window;
+}
+
+// Use AABBs to do 3D collision checks
+AABB get_world_aabb(const ObjectData& obj, const Mesh& mesh)
+{
+	return mesh.bounds.transform(obj.model);
+}
+
+bool check_collision(const ObjectData& objA, const ObjectData& objB, const std::vector<Mesh>& allMeshes)
+{
+	const Mesh& meshA = allMeshes[objA.meshIndex];
+	const Mesh& meshB = allMeshes[objB.meshIndex];
+
+	AABB worldA = get_world_aabb(objA, meshA);
+	AABB worldB = get_world_aabb(objB, meshB);
+
+	return worldA.overlaps(worldB);
 }
