@@ -72,8 +72,9 @@ constexpr int totalRings = 4;
 // game audio test
 // Soloud test
 SoLoud::Soloud gSoLoud; // SoLoud engine
-SoLoud::Wav gWave; // One wave file
-SoLoud::Wav gWave2; // One wave file
+//SoLoud::Wav gWave; // Background music
+SoLoud::Wav gWave2; // Ring pickup sound
+SoLoud::Wav gRingHum; // 3D sound for approaching Rings
 
 enum class GameState
 {
@@ -140,8 +141,8 @@ struct ObjectData
 {
 	glm::mat4 model;
 	uint32_t meshIndex;
+	SoLoud::handle soundHandle = 0;
 	uint32_t collected = 0;
-	uint32_t padding2 = 0;
 	uint32_t padding3 = 0;
 };
 std::vector<ObjectData> objectData{};
@@ -194,8 +195,15 @@ int main()
 	// Initialize GLFW and SoLoud
 	GLFWwindow* window = createWindow(appState);
 	gSoLoud.init();
-	gWave.load("../Audio/shadowing.wav");
+	//gWave.load("../Audio/shadowing.wav");
 	gWave2.load("../Audio/retro8.wav");
+	gRingHum.load("../Audio/melody.wav");
+	gRingHum.setLooping(true);
+
+	// SoLoud 3D Configuration
+	gSoLoud.set3dSoundSpeed(1.0f);
+	gRingHum.set3dMinMaxDistance(2.0f, 5.0f);
+	gRingHum.set3dAttenuation(SoLoud::AudioSource::LINEAR_DISTANCE, 1.0f);
 
 	// Initialize Vulkan core
 	VulkanContext context(window);
@@ -411,7 +419,7 @@ int main()
 	}
 
 	// Start playing background music
-	gSoLoud.play(gWave, 0.3f, 0.0f, 0, 0);
+	//gSoLoud.play(gWave, 0.3f, 0.0f, 0, 0);
 
 	double lastTime{};
 	while (!glfwWindowShouldClose(window))
@@ -977,26 +985,33 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 	meshIndex = static_cast<uint32_t>(MeshType::Cube);
 	objectData.push_back({ model, meshIndex });
 
-	pos = { -10.0f, 0.0f, 0.0f };
-	model = glm::translate(glm::mat4(1.0f), pos);
-	model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	meshIndex = static_cast<uint32_t>(MeshType::Ring);
-	objectData.push_back({ model, meshIndex });
+	// Ring objects
+	constexpr int numRings = 4;
+	glm::vec3 ringPositions[numRings] = {
+		glm::vec3(-10.0f, 0.0f, 0.0f),
+		glm::vec3(10.0f, 0.0f, 0.0f),
+		glm::vec3(0.0f, 0.0f, 4.0f),
+		glm::vec3(0.0f, 0.0f, -5.0f),
+	};
 
-	pos = { 10.0f, 0.0f, 0.0f };
-	model = glm::translate(glm::mat4(1.0f), pos);
-	meshIndex = static_cast<uint32_t>(MeshType::Ring);
-	objectData.push_back({ model, meshIndex });
+	for (int i = 0; i < numRings; ++i)
+	{
+		glm::mat4 model = glm::translate(glm::mat4(1.0f), ringPositions[i]);
+		uint32_t meshIndex = static_cast<uint32_t>(MeshType::Ring);
 
-	pos = { 0.0f, 0.0f, 4.0f };
-	model = glm::translate(glm::mat4(1.0f), pos);
-	meshIndex = static_cast<uint32_t>(MeshType::Ring);
-	objectData.push_back({ model, meshIndex });
+		// SoLoud 3D Audio setup
+		const glm::vec3& pos = ringPositions[i];
 
-	pos = { 0.0f, 0.0f, -5.0f };
-	model = glm::translate(glm::mat4(1.0f), pos);
-	meshIndex = static_cast<uint32_t>(MeshType::Ring);
-	objectData.push_back({ model, meshIndex });
+		// Play the gRingHum sound at the ring's position, set to loop and start un-paused
+		SoLoud::handle handle = gSoLoud.play3d(gRingHum,
+			pos.x, pos.y, pos.z,
+			0.0f, 0.0f, 0.0f, // Source velocity (static object)
+			1.0f, // volume (max for full control via attenuation)
+			false,
+			0
+		);
+		objectData.push_back({ model, meshIndex, handle });
+	}
 
 	buffer.createObjectBuffer(objectData.size());
 	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData), currentFrame);
@@ -1018,6 +1033,17 @@ void updateLighting(LightingData& lights, float deltaTime)
 
 void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, GLFWwindow* window, float deltaTime)
 {
+	glm::vec3 cubePos = glm::vec3(objectData[1].model[3]); // Cube transform’s translation
+
+	gSoLoud.set3dListenerParameters(
+		cubePos.x, cubePos.y, cubePos.z,
+		camera.Front.x, camera.Front.y, camera.Front.z,
+		camera.Up.x, camera.Up.y, camera.Up.z,
+		0.0f, 0.0f, 0.0f
+	);
+
+	gSoLoud.update3dAudio();
+
 	if (gameState != GameState::GameWon)
 	{
 		// Define movement speed (units per second)
@@ -1106,6 +1132,12 @@ void updatePhysics(std::vector<ObjectData>& objectData)
 			objectData[i].collected = 1;
 			++ringsCollected;
 			std::cout << "Ring collected: Total: " << ringsCollected << std::endl;
+
+			if (objectData[i].soundHandle != 0)
+			{
+				gSoLoud.stop(objectData[i].soundHandle);
+				objectData[i].soundHandle = 0;
+			}
 		}
 	}
 

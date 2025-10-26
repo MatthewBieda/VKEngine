@@ -5,8 +5,8 @@ struct Object
 {
 	mat4 model;
 	uint meshIndex;
+	uint soundHandle;
 	uint collected;
-	uint padding2;
 	uint padding3;
 };
 
