@@ -19,6 +19,11 @@ public:
 	VkBuffer getVertexBuffer() const { return m_vertexBuffer; }
 	VkBuffer getIndexBuffer() const { return m_indexBuffer; }
 
+	void createOrResizeDebugVertexBuffer(size_t vertexCount);
+	VkBuffer getDebugVertexBuffer() const { return m_debugVertexBuffer; }
+	VmaAllocation getDebugVertexAllocation() const { return m_debugVertexAllocation; }
+	void* getDebugBufferMapped() const { return m_debugBufferMapped; }
+
 	void createObjectBuffer(size_t maxObjects);
 	VkBuffer getObjectBuffer() const { return m_objectBuffer; }
 	size_t getObjectBufferSize() const { return m_objectBufferSize; }
@@ -30,8 +35,14 @@ public:
 	VkDeviceSize getLightingBufferSize() const { return m_lightingBufferSize; }
 	VkDeviceSize getAlignedLightingSize() const { return m_alignedLightingSize; }
 
+	void createVisibleIndexBuffer(size_t maxObjects);
+	VkBuffer getVisibleIndexBuffer() const { return m_visibleIndexBuffer; }
+	VkDeviceSize getVisibleIndexBufferSize() const { return m_visibleIndexBufferSize; }
+	VkDeviceSize getAlignedVisibleIndexBufferSize() const { return m_alignedVisbleIndexBufferSize; }
+
 	void updateObjectBuffer(const void* data, size_t size, uint32_t currentFrame);
 	void updateLightingBuffer(const void* data, size_t size, uint32_t currentFrame);
+	void updateVisibleIndexBuffer(const void* data, size_t size, uint32_t currentFrame);
 
 private:
 	VulkanContext& m_context;
@@ -42,6 +53,12 @@ private:
 
 	VkBuffer m_indexBuffer = VK_NULL_HANDLE;
 	VmaAllocation m_indexAllocation = VK_NULL_HANDLE;
+
+	// Debug buffer resources
+	VkBuffer m_debugVertexBuffer = VK_NULL_HANDLE;
+	VmaAllocation m_debugVertexAllocation = VK_NULL_HANDLE;
+	size_t m_debugVertexCapacity = 0;
+	void* m_debugBufferMapped = nullptr;
 
 	// Per-instance data SSBO
 	VkBuffer m_objectBuffer = VK_NULL_HANDLE;
@@ -56,6 +73,13 @@ private:
 	void* m_lightingBufferMapped = nullptr;
 	VkDeviceSize m_lightingBufferSize = 0;
 	VkDeviceSize m_alignedLightingSize = 0;
+
+	// Visible Instance Index SSBO
+	VkBuffer m_visibleIndexBuffer = VK_NULL_HANDLE;
+	VmaAllocation m_visibleIndexAllocation = VK_NULL_HANDLE;
+	void* m_visibleIndexBufferMapped = nullptr;
+	VkDeviceSize m_visibleIndexBufferSize = 0;
+	VkDeviceSize m_alignedVisbleIndexBufferSize = 0;
 
 	uint32_t m_maxFramesInFlight;
 

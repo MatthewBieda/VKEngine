@@ -4,6 +4,8 @@
 #include "VulkanContext.hpp"
 #include "Commands.hpp"
 
+#include "DebugVertex.hpp"
+
 #include <stdexcept>
 #include <iostream>
 
@@ -20,6 +22,8 @@ GPUBuffer::~GPUBuffer()
 	vmaDestroyBuffer(m_context.getAllocator(), m_indexBuffer, m_indexAllocation);
 	vmaDestroyBuffer(m_context.getAllocator(), m_objectBuffer, m_objectAllocation);
 	vmaDestroyBuffer(m_context.getAllocator(), m_lightingBuffer, m_lightingAllocation);
+	vmaDestroyBuffer(m_context.getAllocator(), m_visibleIndexBuffer, m_visibleIndexAllocation);
+	vmaDestroyBuffer(m_context.getAllocator(), m_debugVertexBuffer, m_debugVertexAllocation);
 }
 
 void GPUBuffer::updateObjectBuffer(const void* data, size_t size, uint32_t currentFrame)
@@ -42,6 +46,18 @@ void GPUBuffer::updateLightingBuffer(const void* data, size_t size, uint32_t cur
 
 	VkDeviceSize offset = currentFrame * m_alignedLightingSize;
 	memcpy((char*)m_lightingBufferMapped + offset, data, size);
+}
+
+void GPUBuffer::updateVisibleIndexBuffer(const void* data, size_t size, uint32_t currentFrame)
+{
+	// where size is sizeof(uint32_t) * visibleIndices.size();
+	if (size > m_alignedVisbleIndexBufferSize)
+	{
+		throw std::runtime_error("Visible index buffer overflow");
+	}
+
+	VkDeviceSize offset = currentFrame * m_alignedVisbleIndexBufferSize;
+	memcpy((char*)m_visibleIndexBufferMapped + offset, data, size);
 }
 
 void GPUBuffer::createVertexBuffer(const std::vector<Vertex>& vertices)
@@ -136,6 +152,39 @@ void GPUBuffer::createIndexBuffer(const std::vector<uint32_t>& indices)
 	vmaDestroyBuffer(m_context.getAllocator(), stagingBuffer, stagingAllocation);
 }
 
+void GPUBuffer::createOrResizeDebugVertexBuffer(size_t vertexCount)
+{
+	VkDeviceSize newSize = vertexCount * sizeof(DebugVertex);
+
+	// Recreate if too small
+	if (m_debugVertexBuffer == VK_NULL_HANDLE || newSize > m_debugVertexCapacity)
+	{
+		if (m_debugVertexBuffer != VK_NULL_HANDLE)
+		{
+			vmaDestroyBuffer(m_context.getAllocator(), m_debugVertexBuffer, m_debugVertexAllocation);
+		}
+
+		m_debugVertexCapacity = newSize * 2; // Add some headroom
+
+		VkBufferCreateInfo bufferInfo{};
+		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufferInfo.size = m_debugVertexCapacity;
+		bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		VmaAllocationCreateInfo allocInfo{};
+		allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+		allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+		VmaAllocationInfo allocationInfo{};
+
+		vmaCreateBuffer(m_context.getAllocator(), &bufferInfo, &allocInfo,
+			&m_debugVertexBuffer, &m_debugVertexAllocation, &allocationInfo);
+
+		m_debugBufferMapped = allocationInfo.pMappedData;
+	}
+}
+
 void GPUBuffer::createLightingBuffer(VkDeviceSize lightingBufferSize)
 {
 	VkPhysicalDeviceProperties props;
@@ -204,6 +253,41 @@ void GPUBuffer::createObjectBuffer(size_t maxObjects)
 	nameObject(m_context.getDevice(), m_objectBuffer, "ObjectBuffer_SSBO");
 	std::cout << "Object dynamic SSBO created successfully (" << maxObjects << " objects)" << std::endl;
 }
+
+void GPUBuffer::createVisibleIndexBuffer(size_t maxObjects)
+{
+	// Buffer must be large enough tn hold all object indices
+	m_visibleIndexBufferSize = sizeof(uint32_t) * maxObjects; // Size of one index * amount of object
+
+	VkPhysicalDeviceProperties props;
+	vkGetPhysicalDeviceProperties(m_context.getPhysicalDevice(), &props);
+	VkDeviceSize alignment = props.limits.minStorageBufferOffsetAlignment;
+
+	m_alignedVisbleIndexBufferSize = (m_visibleIndexBufferSize + alignment - 1) & ~(alignment - 1);
+
+	VkBufferCreateInfo bufferInfo{};
+	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferInfo.size = m_alignedVisbleIndexBufferSize * m_maxFramesInFlight;
+	bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	VmaAllocationCreateInfo allocInfo{};
+	allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+	allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+	if (vmaCreateBuffer(m_context.getAllocator(), &bufferInfo, &allocInfo, &m_visibleIndexBuffer, &m_visibleIndexAllocation, nullptr) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create visible index SSBO");
+	}
+
+	VmaAllocationInfo allocInfoDetails{};
+	vmaGetAllocationInfo(m_context.getAllocator(), m_visibleIndexAllocation, &allocInfoDetails);
+	m_visibleIndexBufferMapped = allocInfoDetails.pMappedData;
+
+	nameObject(m_context.getDevice(), m_visibleIndexBuffer, "VisibleIndexBuffer_SSBO");
+	std::cout << "Visible Index dynamic SSBO created successfully" << std::endl;
+}
+
 
 void GPUBuffer::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
 {

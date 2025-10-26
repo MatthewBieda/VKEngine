@@ -33,6 +33,9 @@ public:
 	inline static bool enableWireframe = VK_FALSE;
 	inline static bool enableDirectionalLight = VK_TRUE;
 	inline static bool enablePointLights = VK_TRUE;
+	inline static bool freezeFrustum = VK_FALSE;
+	inline static bool showMeshAABB = VK_FALSE;
+	inline static bool showSubmeshAABB = VK_FALSE;
 
 private:
 	static void checkVkResult(VkResult err);

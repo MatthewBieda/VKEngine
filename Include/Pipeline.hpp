@@ -14,7 +14,8 @@ enum class PipelineType
 {
 	Scene,
 	Skybox,
-	Transparent
+	Transparent,
+	DebugAABB
 };
 
 class Pipeline
