@@ -69,6 +69,8 @@
 - Skeletal Animations
 - Cascaded Shadow Maps
 - Deferred Rendering (Tiled Deferred + Forward Pass)
+- Probe-based Global Illumination
+- Simple Rigid-Body physics simulation
 - Object Picking, ImGuizmo integration, scene serialization, CPU metrics (Editor features)
 
 **Future / Experimental**
