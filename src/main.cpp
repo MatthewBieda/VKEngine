@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <filesystem>
 
+#include "soloud.h"
+#include "soloud_wav.h"
 #include "glfw3.h"
 
 #define GLM_FORCE_RADIANS
@@ -34,6 +36,10 @@
 #include "Lights.hpp" // Light types
 #include "Frustum.hpp" // Camera frustum data
 #include "AABB.hpp" // Axis-Aligned Bounding Boxes
+
+// Audio test
+SoLoud::Soloud gSoLoud; // SoLoud engine
+SoLoud::Wav gWave; // Audio item
 
 static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 uint32_t currentFrame = 0;
@@ -185,8 +191,11 @@ void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GP
 
 int main()
 {
-	// Initialize Vulkan core
+	// Initialize GLFW & SoLoud
 	GLFWwindow* window = createWindow(appState);
+	gSoLoud.init();
+	gWave.load("../Audio/shadowing.wav");
+
 	VulkanContext context(window);
 	Swapchain swapchain(window, context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
@@ -356,6 +365,9 @@ int main()
 
 	Frustum frustum;
 	Frustum frozenFrustum;
+
+	// Begin background music
+	gSoLoud.play(gWave, 0.3f, 0.0f, 0.0);
 
 	double lastTime{};
 	while (!glfwWindowShouldClose(window))
