@@ -1,5 +1,5 @@
 <h1 align="center">VKEngine</h1>
-<h3 align="center">A 3D rendering engine created with Vulkan and C++20.</h3>
+<h3 align="center">A 3D game engine created with Vulkan and C++20.</h3>
 
 ![VKEngine Latest Version](https://i.ibb.co/VshfqQg/VKEngine-Episode6-Cover.jpg)
 
@@ -45,7 +45,7 @@
   Batch draw calls on a per-material basis to reduce the number of state changes needed in the render loop.
 
 - **Animations**  
-  Update an object's model matrix at runtime to translate, rotate and scale any object. 
+  Update an object's model matrix in real-time to translate, rotate and scale any object. 
 
 - **Light Casters**  
   A small cube mesh that tracks the positions of a point light, making placing lights easy.
@@ -53,13 +53,26 @@
 - **Bindless Textures**  
   Uses descriptor indexing to give shaders direct access to large arrays of textures, eliminating the need to bind textures individually per draw call.
 
+- **Frustum Culling**  
+  Cull all objects that are not currently within the camera frustum in order to massively improve rendering efficiency. 
+
+- **3D Audio**  
+  Easy to use 2D and 3D Audio API provided by the SoLoud library.
+
+- **AABB Debug Visualizations**  
+  View Mesh-level and Submesh-level bounding boxes in real-time directly in the engine. 
+
 ### Roadmap:	
 
+**Near-Term Goals**
 - Normal Maps
-- Frustum Culling
 - Skeletal Animations
-- Cascading Shadow Maps
+- Cascaded Shadow Maps
 - Deferred Rendering (Tiled Deferred + Forward Pass)
+- Object Picking, ImGuizmo integration, scene serialization, CPU metrics (Editor features)
+
+**Future / Experimental**
+- PBR/IBL, Clustered Shading, Compute Shader post-processing, GPU-Driven Rendering, Mesh Shaders, Hardware Ray Tracing
 
 ### Devlog 0
 - Motivations & Dependencies
@@ -115,6 +128,8 @@
 
 ### Devlog 7
 - Frustum Culling, AABB debug visualizations, 3D Audio, Renderer Optimizations
+
+[![VKEngine - Devlog 7](https://img.youtube.com/vi/8aeu3GFEH0M/0.jpg)](https://www.youtube.com/watch?v=8aeu3GFEH0M)
 
 **Implementation Details**
 
