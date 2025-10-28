@@ -108,8 +108,18 @@
 
 [![VKEngine - Devlog 5](https://img.youtube.com/vi/82CNc7eAjmw/0.jpg)](https://www.youtube.com/watch?v=82CNc7eAjmw)
 
-
 ### Devlog 6
 - Submeshes, Material Batching, Animations & Light Casters
 
 [![VKEngine - Devlog 6](https://img.youtube.com/vi/sx5lNJ4Cczo/0.jpg)](https://www.youtube.com/watch?v=sx5lNJ4Cczo)
+
+### Devlog 7
+- Frustum Culling, AABB debug visualizations, 3D Audio, Renderer Optimizations
+
+**Implementation Details**
+
+- **CPU Culling**: The `performFrustumCulling` function iterates over all objects and performs visibility tests using their AABBs against the camera frustum. If an object passes the test, its global index is added to the `globalVisibleInstances` vector that will be pushed to a GPU buffer.
+
+- **BuildDrawCommands**: This function takes that sparse list of visible object indices and groups them by mesh to enable instanced rendering. A nice optimization I added is Index Buffer Merging. If two sequential submeshes share the same material and belong to the same parent mesh, I don't create a new draw call. Instead, I just extend the `indexCount` of the previous draw command, effectively drawing both submeshes in a single call. This further reduces the total number of draw calls sent to the GPU.
+
+- **Indirect GPU Rendering**: The GPU receives the grouped draw commands, but it needs to know which specific instance data to use. In the vertex shader, we use the built-in `gl_InstanceIndex`, which is sequential (0, 1, 2...). We use this sequential index to look up the global object index from our `visibleIndexData` buffer - this is the indirection step. Finally, we use that global index to fetch the correct Model Matrix and other per-object data from the main `ObjectBuffer`. This whole flow is an essential step towards GPU-Driven Rendering because the CPU's job is reduced to just filtering visibility and building draw commands - the GPU handles all the data fetching itself. In a fully GPU-driven pipeline, even the culling step would move to the GPU.

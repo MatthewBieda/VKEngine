@@ -1014,8 +1014,9 @@ std::vector<uint32_t> performFrustumCulling(std::vector<ObjectData>& objectData,
 		// Transform mesh AABB to world space and check visibility against frustum
 		AABB worldBounds = mesh.bounds.transform(objectData[i].model);
 
-		bool visible = frustum.isBoxVisible(worldBounds.min, worldBounds.max);
-		//bool visible = frustum.isSphereVisible(worldBounds.center(), worldBounds.radius());
+		// Sphere test is slightly faster, often used for first pass
+		//bool visible = frustum.isBoxVisible(worldBounds.min, worldBounds.max);
+		bool visible = frustum.isSphereVisible(worldBounds.center(), worldBounds.radius());
 
 		if (visible)
 		{
@@ -1048,12 +1049,12 @@ DrawLists buildDrawCommands(const std::vector<uint32_t>& globalVisibleIndices, c
 	std::vector<uint32_t> sortedVisibleMeshIndices;
 	std::unordered_set<uint32_t> seenMeshes;
 
-	for (uint32_t objIdx : globalVisibleIndices)
+	for (uint32_t objectIndex: globalVisibleIndices)
 	{
-		uint32_t meshIdx = objectData[objIdx].meshIndex;
-		if (seenMeshes.insert(meshIdx).second)
+		uint32_t meshIndex = objectData[objectIndex].meshIndex;
+		if (seenMeshes.insert(meshIndex).second)
 		{
-			sortedVisibleMeshIndices.push_back(meshIdx);
+			sortedVisibleMeshIndices.push_back(meshIndex);
 		}
 	}
 
