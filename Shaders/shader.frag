@@ -56,6 +56,7 @@ layout(location = 0) out vec4 outColor;
 // Material constants
 const float shininess = 32.0f;
 const float specularStrength = 0.1f;
+const int NO_TEXTURE = -1;
 
 void main() {
 	// Debug: visualize normals as colors
@@ -64,7 +65,7 @@ void main() {
 
     vec3 N = normalize(fragNormal);
 
-    if (pc.normalTextureIndex != 0 && pc.enableNormalMaps != 0)
+    if (pc.normalTextureIndex != NO_TEXTURE && pc.enableNormalMaps != 0)
     {
         vec3 T = normalize(fragTangent);
         vec3 B = normalize(fragBitangent);
@@ -81,9 +82,15 @@ void main() {
     vec3 V = normalize(pc.cameraPos - fragPos);
 
     // Sample color and alpha
-    vec4 texSample = texture(nonuniformEXT(tex[pc.diffuseTextureIndex]), fragTexCoord);
-    vec3 albedo = texSample.rgb;
-    float alpha = texSample.a;
+    vec3 albedo = vec3(1.0, 0.0, 1.0); // Pink signals missing texture
+    float alpha = 1.0; // Default to opaque
+
+    if (pc.diffuseTextureIndex != NO_TEXTURE)
+    {
+        vec4 texSample = texture(nonuniformEXT(tex[pc.diffuseTextureIndex]), fragTexCoord);
+        albedo = texSample.rgb;
+        alpha = texSample.a;
+    }
 
     // Alpha test
     if (pc.enableAlphaTest != 0 && alpha < 0.8)

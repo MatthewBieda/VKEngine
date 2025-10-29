@@ -863,7 +863,7 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 		}
 		else
 		{
-			mat.albedoTexture = 0;
+			mat.albedoTexture = -1;
 		}
 
 		if (!mtl.bump_texname.empty())
@@ -873,7 +873,7 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 		}
 		else
 		{
-			mat.normalTexture = 0;
+			mat.normalTexture = -1;
 		}
 
 		mat.specularTexture = 0;
