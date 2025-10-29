@@ -158,6 +158,7 @@ void ImGuiOverlay::drawUI()
 
 	ImGui::Checkbox("Enable Depth Test", &enableDepthTest);
 	ImGui::Checkbox("Enable Wireframe", &enableWireframe);
+	ImGui::Checkbox("Enable Normal Maps", &enableNormalMaps);
 
 	ImGui::Separator();
 	ImGui::Text("Lighting");

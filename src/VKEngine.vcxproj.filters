@@ -13,6 +13,12 @@
     <Filter Include="Source Files\ImGui">
       <UniqueIdentifier>{2740ac1c-57d7-4606-b884-ef2112ecebff}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\SoLoud">
+      <UniqueIdentifier>{faf97f82-fef5-43ac-85d2-753213140b6e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\MikkTSpace">
+      <UniqueIdentifier>{a7ed4965-8cb3-42e0-975c-feec0fd06b13}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -64,6 +70,81 @@
       <Filter>Source Files\ImGui</Filter>
     </ClCompile>
     <ClCompile Include="Camera.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\audiosource\wav\dr_impl.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_audiosource.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_core_3d.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_bus.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_core_basicops.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_core_faderops.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_core_filterops.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_core_getters.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_core_setters.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_core_voicegroup.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_core_voiceops.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_fader.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_fft.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_fft_lut.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_file.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_filter.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_misc.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_queue.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\core\soloud_thread.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\audiosource\wav\soloud_wav.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\audiosource\wav\soloud_wavstream.cpp">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\SoLoud\src\audiosource\wav\stb_vorbis.c">
+      <Filter>Source Files\SoLoud</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\MikkTSpace\mikktspace.c">
+      <Filter>Source Files\MikkTSpace</Filter>
+    </ClCompile>
+    <ClCompile Include="TangentGen.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -140,6 +221,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\Include\DebugVertex.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Include\TangentGen.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

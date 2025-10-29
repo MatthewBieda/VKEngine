@@ -14,7 +14,7 @@ public:
 	~GPUImage();
 
 	// Load a texture and return its index in the bindless array
-	uint32_t loadTexture(const std::string& path);
+	uint32_t loadTexture(const std::string& path, bool is_srgb);
 
 	// Get all texture views for descriptor update
 	const std::vector<VkImageView>& getTextureViews() const { return m_textureViews; }
@@ -56,7 +56,7 @@ private:
 	VkSampler m_sharedTextureSampler = VK_NULL_HANDLE;
 
 	// Helper to load a single texture
-	GPUImage::Texture createTextureImageFromFile(const std::string& path);
+	GPUImage::Texture createTextureImageFromFile(const std::string& path, bool is_srgb);
 
 	// Depth resources (multisampled)
 	VkImage m_depthImage = VK_NULL_HANDLE;

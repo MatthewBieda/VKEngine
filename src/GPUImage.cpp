@@ -47,9 +47,9 @@ GPUImage::~GPUImage()
 	}
 }
 
-uint32_t GPUImage::loadTexture(const std::string& path)
+uint32_t GPUImage::loadTexture(const std::string& path, bool is_srgb)
 {
-	Texture tex = createTextureImageFromFile(path);
+	Texture tex = createTextureImageFromFile(path, is_srgb);
 
 	uint32_t index = static_cast<uint32_t>(m_textures.size());
 	m_textures.push_back(tex);
@@ -59,7 +59,7 @@ uint32_t GPUImage::loadTexture(const std::string& path)
 	return index;
 }
 
-GPUImage::Texture GPUImage::createTextureImageFromFile(const std::string& path)
+GPUImage::Texture GPUImage::createTextureImageFromFile(const std::string& path, bool is_srgb)
 {
 	int texWidth, texHeight, texChannels;
 	uint8_t* pixels = stbi_load(path.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
@@ -70,8 +70,17 @@ GPUImage::Texture GPUImage::createTextureImageFromFile(const std::string& path)
 	}
 	Texture tex;
 
-	// Calculate mip levels
-	tex.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
+	// Conditional format selection
+	VkFormat imageFormat = is_srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+
+	// Conditionally set mip levels
+	tex.mipLevels = 1;
+
+	if (is_srgb)
+	{
+		// Only caclulate full mip-chain for color maps
+		tex.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
+	}
 
 	VkDeviceSize imageSize = texWidth * texHeight * 4;
 
@@ -112,7 +121,7 @@ GPUImage::Texture GPUImage::createTextureImageFromFile(const std::string& path)
 	imageInfo.extent.depth = 1;
 	imageInfo.mipLevels = tex.mipLevels;
 	imageInfo.arrayLayers = 1;
-	imageInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+	imageInfo.format = imageFormat;
 	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -138,8 +147,15 @@ GPUImage::Texture GPUImage::createTextureImageFromFile(const std::string& path)
 	// Copy buffer to base mip level (mip 0)
 	copyBufferToImage(cmd, stagingBuffer, tex.image, texWidth, texHeight);
 
-	// Generate mipmaps
-	generateMipmaps(cmd, tex.image, tex.mipLevels, texWidth, texHeight);
+	if (tex.mipLevels > 1)
+	{
+		generateMipmaps(cmd, tex.image, tex.mipLevels, texWidth, texHeight);
+	}
+	else
+	{
+		// if just one mip level, manually transition to shader read
+		transitionImageLayout(cmd, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, tex.image, VK_IMAGE_ASPECT_COLOR_BIT, 0, 1);
+	}
 
 	m_commands.endSingleTimeCommands(cmd);
 

@@ -36,6 +36,7 @@ public:
 	inline static bool freezeFrustum = VK_FALSE;
 	inline static bool showMeshAABB = VK_FALSE;
 	inline static bool showSubmeshAABB = VK_FALSE;
+	inline static bool enableNormalMaps = VK_TRUE;
 
 private:
 	static void checkVkResult(VkResult err);

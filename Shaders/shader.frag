@@ -10,6 +10,8 @@ layout(push_constant) uniform PushConstants
     int enablePointLights;
     int enableAlphaTest;
     int diffuseTextureIndex;
+    int normalTextureIndex;
+    int enableNormalMaps;
     float reflectionStrength;
 } pc;
 
@@ -44,14 +46,16 @@ layout(std430, set = 0, binding = 2) readonly buffer Lighting
 } lighting;
 
 layout(location = 0) in vec3 fragPos;
-layout(location = 1) in vec3 fragNormal;
+layout(location = 1) in vec3 fragNormal; // Original World Space normal
 layout(location = 2) in vec2 fragTexCoord;
+layout(location = 3) in vec3 fragTangent; // World space tangent
+layout(location = 4) in vec3 fragBitangent; // World space bitangent
 
 layout(location = 0) out vec4 outColor;
 
 // Material constants
 const float shininess = 32.0f;
-const float specularStrength = 0.3f;
+const float specularStrength = 0.1f;
 
 void main() {
 	// Debug: visualize normals as colors
@@ -59,6 +63,21 @@ void main() {
 	//outColor = vec4(normalize(fragNormal) * 0.5 + 0.5, 1.0);
 
     vec3 N = normalize(fragNormal);
+
+    if (pc.normalTextureIndex != 0 && pc.enableNormalMaps != 0)
+    {
+        vec3 T = normalize(fragTangent);
+        vec3 B = normalize(fragBitangent);
+        mat3 TBN = mat3(T, B, N);
+
+        vec4 normalSample = texture(nonuniformEXT(tex[pc.normalTextureIndex]), fragTexCoord);
+
+        // Transform the sampled RGB [0, 1] into a normal vector in tangent space [-1, 1]
+        vec3 sampledNormal = normalize(normalSample.rgb * 2.0 - 1.0);
+
+        N = normalize(TBN * sampledNormal);
+    }
+
     vec3 V = normalize(pc.cameraPos - fragPos);
 
     // Sample color and alpha

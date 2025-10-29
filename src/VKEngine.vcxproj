@@ -103,7 +103,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)Include;$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb;$(SolutionDir)ThirdParty\tinyOBJ;$(SolutionDir)ThirdParty\ImGui;$(SolutionDir)ThirdParty\SoLoud\include;$(SolutionDir)ThirdParty\SoLoud\src\backend\miniaudio;$(SolutionDir)ThirdParty\SoLoud\src\audiosource\wav</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Include;$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb;$(SolutionDir)ThirdParty\tinyOBJ;$(SolutionDir)ThirdParty\ImGui;$(SolutionDir)ThirdParty\SoLoud\include;$(SolutionDir)ThirdParty\SoLoud\src\backend\miniaudio;$(SolutionDir)ThirdParty\SoLoud\src\audiosource\wav;$(SolutionDir)ThirdParty\MikkTSpace\include</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <TreatWarningAsError>true</TreatWarningAsError>
@@ -124,7 +124,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)Include;$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb;$(SolutionDir)ThirdParty\tinyOBJ;$(SolutionDir)ThirdParty\ImGui;$(SolutionDir)ThirdParty\SoLoud\include;$(SolutionDir)ThirdParty\SoLoud\src\backend\miniaudio;$(SolutionDir)ThirdParty\SoLoud\src\audiosource\wav</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Include;$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb;$(SolutionDir)ThirdParty\tinyOBJ;$(SolutionDir)ThirdParty\ImGui;$(SolutionDir)ThirdParty\SoLoud\include;$(SolutionDir)ThirdParty\SoLoud\src\backend\miniaudio;$(SolutionDir)ThirdParty\SoLoud\src\audiosource\wav;$(SolutionDir)ThirdParty\MikkTSpace\include</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <TreatWarningAsError>true</TreatWarningAsError>
@@ -144,6 +144,7 @@
     <ClCompile Include="..\ThirdParty\ImGui\imgui_impl_vulkan.cpp" />
     <ClCompile Include="..\ThirdParty\ImGui\imgui_tables.cpp" />
     <ClCompile Include="..\ThirdParty\ImGui\imgui_widgets.cpp" />
+    <ClCompile Include="..\ThirdParty\MikkTSpace\mikktspace.c" />
     <ClCompile Include="..\ThirdParty\SoLoud\src\audiosource\wav\dr_impl.cpp" />
     <ClCompile Include="..\ThirdParty\SoLoud\src\audiosource\wav\soloud_wav.cpp" />
     <ClCompile Include="..\ThirdParty\SoLoud\src\audiosource\wav\soloud_wavstream.cpp" />
@@ -177,6 +178,7 @@
     <ClCompile Include="Pipeline.cpp" />
     <ClCompile Include="Swapchain.cpp" />
     <ClCompile Include="Sync.cpp" />
+    <ClCompile Include="TangentGen.cpp" />
     <ClCompile Include="VulkanContext.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -203,6 +205,7 @@
     <ClInclude Include="..\Include\Pipeline.hpp" />
     <ClInclude Include="..\Include\Swapchain.hpp" />
     <ClInclude Include="..\Include\Sync.hpp" />
+    <ClInclude Include="..\Include\TangentGen.hpp" />
     <ClInclude Include="..\Include\Utils.hpp" />
     <ClInclude Include="..\Include\Vertex.hpp" />
     <ClInclude Include="..\Include\VulkanContext.hpp" />

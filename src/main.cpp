@@ -36,6 +36,7 @@
 #include "Lights.hpp" // Light types
 #include "Frustum.hpp" // Camera frustum data
 #include "AABB.hpp" // Axis-Aligned Bounding Boxes
+#include "TangentGen.hpp" // Use MikkTSpace standard to generate tangents
 
 // Audio test
 SoLoud::Soloud gSoLoud; // SoLoud engine
@@ -53,7 +54,10 @@ struct PushConstants
 	uint32_t enablePointLights = 1;
 	uint32_t enableAlphaTest = 1;
 	uint32_t diffuseTextureIndex = 0;
+	uint32_t normalTextureIndex = 0;
+	uint32_t enableNormalMaps = 1;
 	float reflectionStrength = 0.0f;
+	uint32_t padding1 = 0;
 } pc;
 
 struct DebugPushConstants
@@ -163,7 +167,8 @@ enum class MeshType
 	Sponza,
 	AlphaTestedGrass,
 	GlassWindow,
-	Cube
+	Cube,
+	BrickWall
 };
 
 void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData);
@@ -221,6 +226,7 @@ int main()
 	uint32_t alphaTestedGrass = loadModel("../Models/Grass/untitled.obj", image);
 	uint32_t glassWindow = loadModel("../Models/GlassWindow/glassWindow.obj", image);
 	uint32_t cube = loadModel("../Models/Cube/cube.obj", image);
+	uint32_t brickWall = loadModel("../Models/BrickWall/BrickWall.obj", image);
 
 	// Create buffers and populate scene
 	GPUBuffer buffer(context, commands, allVertices, allIndices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
@@ -367,7 +373,7 @@ int main()
 	Frustum frozenFrustum;
 
 	// Begin background music
-	gSoLoud.play(gWave, 0.3f, 0.0f, 0.0);
+	//gSoLoud.play(gWave, 0.3f, 0.0f, 0.0);
 
 	double lastTime{};
 	while (!glfwWindowShouldClose(window))
@@ -500,6 +506,7 @@ int main()
 		pc.cameraPos = camera.Position;
 		pc.enableDirectionalLight = imgui.enableDirectionalLight ? 1 : 0;
 		pc.enablePointLights = imgui.enablePointLights ? 1 : 0;
+		pc.enableNormalMaps = imgui.enableNormalMaps ? 1 : 0;
 
 		// Loop over meshes
 		for (uint32_t matIdx = 0; matIdx < drawLists.opaque.size(); ++matIdx)
@@ -518,6 +525,7 @@ int main()
 
 			pc.enableAlphaTest = (material.alphatest == 1) ? 1 : 0;
 			pc.diffuseTextureIndex = static_cast<int>(material.albedoTexture);
+			pc.normalTextureIndex = static_cast<int>(material.normalTexture);
 			pc.reflectionStrength = material.reflectionStrength;
 
 			vkCmdPushConstants(cmd, scenePipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
@@ -603,6 +611,7 @@ int main()
 
 			pc.enableAlphaTest = mat.alphatest;
 			pc.diffuseTextureIndex = static_cast<int>(mat.albedoTexture);
+			pc.normalTextureIndex = static_cast<int>(mat.normalTexture);
 			pc.reflectionStrength = mat.reflectionStrength;
 
 			vkCmdPushConstants(cmd, transparentPipeline.getLayout(),
@@ -767,6 +776,13 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 		}
 		sub.materialIndex = matIndex;
 
+		// Verify that all faces are triangles before processing
+		for (unsigned char fv : shape.mesh.num_face_vertices) {
+			if (fv != 3) {
+				throw std::runtime_error("Non-triangular face found in OBJ file. Please triangulate before loading.");
+			}
+		}
+
 		for (const tinyobj::index_t& index : shape.mesh.indices) {
 			Vertex vertex{};
 
@@ -795,7 +811,8 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 				};
 			}
 
-			//vertex.tangent = glm::vec3(0.0f);
+			// MikkTSpace will populate later
+			vertex.tangent = glm::vec4(0.0f);
 
 			if (!uniqueVertices.contains(vertex)) {
 				uniqueVertices[vertex] = static_cast<uint32_t>(allVertices.size() - mesh.vertexOffset);
@@ -817,6 +834,23 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 	uint32_t meshIndex = static_cast<uint32_t>(allMeshes.size());
 	allMeshes.push_back(mesh);
 
+	// Calculate tangents for the loaded mesh's submeshes using MikkTSpace
+	for (uint32_t i = 0; i < mesh.submeshCount; ++i)
+	{
+		const Submesh& sub = allSubmeshes[mesh.submeshOffset + i];
+
+		MikkTSpaceData data;
+		data.allVerticesPtr = &allVertices;
+		data.allIndicesPtr = &allIndices; // Using a single index buffer
+
+		data.vertexOffset = mesh.vertexOffset; // Mesh's start vertex in allVertices
+		data.indexOffset = sub.indexOffset; // Submesh's start index in allIndices
+		data.indexCount = sub.indexCount; // Submesh's index count
+
+		// Use static helper function to run calculation
+		TangentGenerator::CalculateTangents(data);
+	}
+
 	// Load material data
 	for (const auto& mtl : materials)
 	{
@@ -825,14 +859,23 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 		if (!mtl.diffuse_texname.empty())
 		{
 			fs::path texPath = objDir / mtl.diffuse_texname;
-			mat.albedoTexture = imageClass.loadTexture(texPath.string());
+			mat.albedoTexture = imageClass.loadTexture(texPath.string(), true); // Pass true for SRGB
 		}
 		else
 		{
 			mat.albedoTexture = 0;
 		}
 
-		mat.normalTexture = 0;
+		if (!mtl.bump_texname.empty())
+		{
+			fs::path texPath = objDir / mtl.bump_texname;
+			mat.normalTexture = imageClass.loadTexture(texPath.string(), false); // Pass false for UNORM/data
+		}
+		else
+		{
+			mat.normalTexture = 0;
+		}
+
 		mat.specularTexture = 0;
 
 		if (mtl.dissolve < 1.0f)
@@ -953,6 +996,12 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 	glm::vec3 pos = { 50.0f, -10.0f, 5.0f };
 	glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
 	meshIndex = static_cast<uint32_t>(MeshType::Sponza);
+	objectData.push_back({ model, meshIndex });
+
+	// Add brick wall
+	pos = { -10.0f, 0.0f, 0.0f };
+	model = glm::translate(glm::mat4(1.0f), pos);
+	meshIndex = static_cast<uint32_t>(MeshType::BrickWall);
 	objectData.push_back({ model, meshIndex });
 
 	buffer.createObjectBuffer(objectData.size());

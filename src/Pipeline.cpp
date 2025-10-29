@@ -119,7 +119,7 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 
 	// Fixed-function state (vertex input, input assembly, viewport, rasterizer, multisample, color blend)
 	VkVertexInputBindingDescription bindingDescription = Vertex::getBindingDescription();
-	std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions = Vertex::getAttributeDescription();
+	std::array<VkVertexInputAttributeDescription, 4> attributeDescriptions = Vertex::getAttributeDescription();
 
 	VkVertexInputBindingDescription debugBinding;
 	std::array<VkVertexInputAttributeDescription, 2> debugAttributes;

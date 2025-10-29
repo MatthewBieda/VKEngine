@@ -24,10 +24,13 @@ layout(set = 0, binding = 4) readonly buffer VisibleIndexData
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inNormal;
 layout(location = 2) in vec2 inTexCoord;
+layout(location = 3) in vec4 inTangent; // Tangent vector (includes handedness in .w)
 
 layout(location = 0) out vec3 fragPos;
-layout(location = 1) out vec3 fragNormal;
+layout(location = 1) out vec3 fragNormal; // World space normal
 layout(location = 2) out vec2 fragTexCoord;
+layout(location = 3) out vec3 fragTangent; // World space tangent
+layout(location = 4) out vec3 fragBitangent; // World space bitangent
 
 layout(push_constant) uniform PushConstants
 {
@@ -50,9 +53,26 @@ void main() {
 	mat4 modelMat = obj.model;
 	vec4 worldPos = modelMat * vec4(inPosition, 1.0);
 
-	fragTexCoord = inTexCoord;
+	// Matrix for transforming Normals/Tangents
+	mat3 normalMat = mat3(transpose(inverse(modelMat)));
+
+	// Transform N, T to World Space
+	vec3 N = normalize(normalMat * inNormal);
+	vec3 T = normalize(normalMat * inTangent.xyz);
+
+	// Optional: Re-orthogonalize T to N to correct for non-uniform scaling/skewing 
+    // This makes sure N and T are strictly perpendicular in world space.
+	T = normalize(T - dot(T, N) * N);
+
+	// Calculate Bitangent
+	vec3 B = normalize(cross(N, T) * inTangent.w);
+
+	// Output World Space vectors
 	fragPos = worldPos.xyz;
-	fragNormal = mat3(transpose(inverse(modelMat))) * inNormal;
+	fragNormal = N;
+	fragTexCoord = inTexCoord;
+	fragTangent = T;
+	fragBitangent = B;
 
 	gl_Position = pc.proj * pc.view * worldPos;
 }
