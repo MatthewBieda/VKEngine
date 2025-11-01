@@ -6,6 +6,8 @@
 #include <unordered_set>
 #include <algorithm>
 #include <filesystem>
+#include <execution> // C++ 17 parallel algorithms
+#include <ranges>
 
 #include "soloud.h"
 #include "soloud_wav.h"
@@ -146,6 +148,23 @@ struct AppState
 } appState;
 
 Camera camera;
+
+using Clock = std::chrono::high_resolution_clock;
+using ms = std::chrono::duration<double, std::milli>;
+
+struct ScopedTimer
+{
+	const char* label;
+	Clock::time_point start;
+
+	ScopedTimer(const char* lbl) : label(lbl), start(Clock::now()) {}
+	~ScopedTimer()
+	{
+		auto end = Clock::now();
+		double elapsed = std::chrono::duration_cast<ms>(end - start).count();
+		std::cout << label << ": " << elapsed << " ms" << std::endl;
+	}
+};
 
 std::vector<Vertex> allVertices{};
 std::vector<uint32_t> allIndices{};
@@ -1065,30 +1084,37 @@ void updateObjects(std::vector<ObjectData>& objectData, const LightingData& ligh
 
 std::vector<uint32_t> performFrustumCulling(std::vector<ObjectData>& objectData, const std::vector<Mesh>& allMeshes, const Frustum& frustum)
 {
+	// Visibility flag per-thread
+	std::vector<uint8_t> visibility(objectData.size(), 0);
+
+	// Parallel visibility test using ranges, as Frustum Culling is "embaressinly parallel"
+	auto indices = std::views::iota(0u, static_cast<uint32_t>(objectData.size()));
+	std::for_each(std::execution::par_unseq, indices.begin(), indices.end(),
+		[&](uint32_t i)
+		{
+			// Transform mesh AABB to world space and check visibility against frustum
+			const auto& mesh = allMeshes[objectData[i].meshIndex];
+			AABB worldBounds = mesh.bounds.transform(objectData[i].model);
+
+			// Sphere test is slightly faster, often used for first pass
+			//bool visible = frustum.isBoxVisible(worldBounds.min, worldBounds.max);
+			bool visible = frustum.isSphereVisible(worldBounds.center(), worldBounds.radius());
+
+			objectData[i].isVisible = visible ? 1 : 0;
+			visibility[i] = visible ? 1 : 0;
+		});
+
 	std::vector<uint32_t> globalVisibleIndices;
 	globalVisibleIndices.reserve(objectData.size());
 
-	for (uint32_t i = 0; i < objectData.size(); ++i)
+	for (uint32_t i = 0; i < visibility.size(); ++i)
 	{
-		const auto& mesh = allMeshes[objectData[i].meshIndex];
-
-		// Transform mesh AABB to world space and check visibility against frustum
-		AABB worldBounds = mesh.bounds.transform(objectData[i].model);
-
-		// Sphere test is slightly faster, often used for first pass
-		//bool visible = frustum.isBoxVisible(worldBounds.min, worldBounds.max);
-		bool visible = frustum.isSphereVisible(worldBounds.center(), worldBounds.radius());
-
-		if (visible)
+		if (visibility[i])
 		{
-			objectData[i].isVisible = 1;
 			globalVisibleIndices.push_back(i);
 		}
-		else
-		{
-			objectData[i].isVisible = 0;
-		}
 	}
+
 	return globalVisibleIndices;
 }
 

@@ -14,24 +14,22 @@ struct AABB
 
 	AABB transform(const glm::mat4& matrix) const
 	{
-		// Transform all 8 corners and recomupute bounds
-		AABB result;
-		glm::vec3 corners[8] = {
-			{min.x, min.y, min.z},
-			{max.x, min.y, min.z},
-			{min.x, max.y, min.z},
-			{max.x, max.y, min.z},
-			{min.x, min.y, max.z},
-			{max.x, min.y, max.z},
-			{min.x, max.y, max.z},
-			{max.x, max.y, max.z}
-		};
+		// optimized AABB transform
+		glm::vec3 newCenter = glm::vec3(matrix * glm::vec4(center(), 1.0f));
 
-		for (const glm::vec3& corner : corners)
-		{
-			glm::vec3 transformed = glm::vec3(matrix * glm::vec4(corner, 1.0f));
-			result.expand(transformed);
-		}
+		// Abs of upper 3x3 matrix
+		glm::mat3 absM = glm::mat3(
+			glm::abs(glm::vec3(matrix[0])),
+			glm::abs(glm::vec3(matrix[1])),
+			glm::abs(glm::vec3(matrix[2]))
+		);
+
+		glm::vec3 halfSize = (max - min) * 0.5f;
+		glm::vec3 newExtents = absM * halfSize;
+
+		AABB result;
+		result.min = newCenter - newExtents;
+		result.max = newCenter + newExtents;
 		return result;
 	}
 
