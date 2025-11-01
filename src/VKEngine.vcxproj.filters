@@ -173,6 +173,9 @@
     <None Include="..\Shaders\debug.frag">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="..\Shaders\shadow.vert">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Include\VulkanContext.hpp">
@@ -224,6 +227,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\Include\TangentGen.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Include\ShadowVertex.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

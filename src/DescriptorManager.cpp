@@ -5,6 +5,8 @@
 #include "GPUImage.hpp"
 #include "DescriptorManager.hpp"
 
+#include "imgui_impl_vulkan.h"
+
 #include <stdexcept>
 #include <iostream>
 #include <array>
@@ -118,7 +120,7 @@ void DescriptorManager::createDescriptorPool()
 	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
 	poolInfo.pPoolSizes = poolSizes.data();
-	poolInfo.maxSets = 2; // ImGui needs another set
+	poolInfo.maxSets = 1;
 
 	if (vkCreateDescriptorPool(m_context.getDevice(), &poolInfo, nullptr, &m_descriptorPool) != VK_SUCCESS)
 	{

@@ -28,6 +28,9 @@ public:
 
 	void drawUI();
 
+	VkDescriptorSet createImGuiTextureDescriptor(VkImageView imageView, VkSampler sampler);
+	void drawShadowMapVisualization(VkDescriptorSet shadowMapDescriptorSet) const;
+
 	inline static bool showMetrics = VK_TRUE;
 	inline static bool enableDepthTest = VK_TRUE;
 	inline static bool enableWireframe = VK_FALSE;
@@ -37,6 +40,7 @@ public:
 	inline static bool showMeshAABB = VK_FALSE;
 	inline static bool showSubmeshAABB = VK_FALSE;
 	inline static bool enableNormalMaps = VK_TRUE;
+	inline static bool showShadowMap = VK_TRUE;
 
 private:
 	static void checkVkResult(VkResult err);

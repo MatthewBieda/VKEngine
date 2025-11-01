@@ -82,7 +82,7 @@ void ImGuiOverlay::init(GLFWwindow* window, VulkanContext& context, DescriptorMa
 	info.QueueFamily = context.getGraphicsQueueFamilyIndex();
 	info.Queue = context.getGraphicsQueue();
 	info.PipelineCache = VK_NULL_HANDLE;
-	info.DescriptorPool = descriptors.getDescriptorPool();
+	info.DescriptorPoolSize = 3; // Use backend pools instead of mine
 	info.RenderPass = VK_NULL_HANDLE;
 	info.Subpass = 0;
 	info.MinImageCount = imageCount;
@@ -166,6 +166,9 @@ void ImGuiOverlay::drawUI()
 	ImGui::Checkbox("Enable Point Lights", &enablePointLights);
 
 	ImGui::Separator();
+	ImGui::Text("Debug Views");
+	ImGui::Checkbox("Show shadow map", &showShadowMap);
+
 	ImGui::Checkbox("Show Metrics", &showMetrics);
 	if (showMetrics)
 	{
@@ -179,6 +182,33 @@ void ImGuiOverlay::drawUI()
 	ImGui::Checkbox("Show Mesh AABB (Red)", &showMeshAABB);
 	ImGui::Checkbox("Show Submesh AABB (Green)", &showSubmeshAABB);
 
+	ImGui::End();
+}
+
+VkDescriptorSet ImGuiOverlay::createImGuiTextureDescriptor(VkImageView imageView, VkSampler sampler)
+{
+	VkDescriptorSet descriptorSet = ImGui_ImplVulkan_AddTexture(sampler, imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	return descriptorSet;
+}
+
+void ImGuiOverlay::drawShadowMapVisualization(VkDescriptorSet shadowMapDescriptorSet) const
+{
+	if (!showShadowMap || !m_initialized)
+	{
+		return;
+	}
+
+	ImGui::Begin("Shadow Map", &showShadowMap);
+
+	// Get available content region
+	ImVec2 availSize = ImGui::GetContentRegionAvail();
+
+	// Make it square
+	float size = std::min(availSize.x, availSize.y);
+
+	// Display shadowmap as texture
+	ImGui::Image((ImTextureID)shadowMapDescriptorSet, ImVec2(size, size));
+	
 	ImGui::End();
 }
 

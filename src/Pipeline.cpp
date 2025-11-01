@@ -6,6 +6,7 @@
 #include "DescriptorManager.hpp"
 #include "Vertex.hpp"
 #include "DebugVertex.hpp"
+#include "ShadowVertex.hpp"
 
 #include <fstream>
 #include <iostream>
@@ -83,25 +84,35 @@ std::vector<char> Pipeline::readFile(const std::string& filename)
 
 void Pipeline::createPipeline(const std::string& vertPath, const std::string& fragPath, VkFormat colorFormat, VkFormat depthFormat, PipelineType type, uint32_t pushConstantsSize)
 {
-	std::vector<char> vertCode = readFile(vertPath);
-	std::vector<char> fragCode = readFile(fragPath);
+	std::vector<VkShaderModule> shaderModules;
+	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
 
+	// Vertex shader (mandatory)
+	std::vector<char> vertCode = readFile(vertPath);
 	VkShaderModule vertModule = createShaderModule(vertCode);
-	VkShaderModule fragModule = createShaderModule(fragCode);
+	shaderModules.push_back(vertModule);
 
 	VkPipelineShaderStageCreateInfo vertStageInfo{};
 	vertStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	vertStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
 	vertStageInfo.module = vertModule;
 	vertStageInfo.pName = "main";
+	shaderStages.push_back(vertStageInfo);
 
-	VkPipelineShaderStageCreateInfo fragStageInfo{};
-	fragStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	fragStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	fragStageInfo.module = fragModule;
-	fragStageInfo.pName = "main";
+	// Fragment shader (optional)
+	if (!fragPath.empty())
+	{
+		std::vector<char> fragCode = readFile(fragPath);
+		VkShaderModule fragModule = createShaderModule(fragCode);
+		shaderModules.push_back(fragModule);
 
-	VkPipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
+		VkPipelineShaderStageCreateInfo fragStageInfo{};
+		fragStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		fragStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+		fragStageInfo.module = fragModule;
+		fragStageInfo.pName = "main";
+		shaderStages.push_back(fragStageInfo);
+	}
 
 	// Modern vulkan supports dynamic modification of some pipeline states
 	std::vector<VkDynamicState> dynamicStates = {
@@ -118,11 +129,16 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 	dynamicStateInfo.pDynamicStates = dynamicStates.data();
 
 	// Fixed-function state (vertex input, input assembly, viewport, rasterizer, multisample, color blend)
+
+	// Declare attributes and bindings for the debug and shadow pipeline
 	VkVertexInputBindingDescription bindingDescription = Vertex::getBindingDescription();
 	std::array<VkVertexInputAttributeDescription, 4> attributeDescriptions = Vertex::getAttributeDescription();
 
 	VkVertexInputBindingDescription debugBinding;
 	std::array<VkVertexInputAttributeDescription, 2> debugAttributes;
+
+	VkVertexInputBindingDescription shadowBinding;
+	std::array<VkVertexInputAttributeDescription, 1> shadowAttributes;
 
 	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 	vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -182,6 +198,12 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 	pushConstantRange.offset = 0;
 	pushConstantRange.size = pushConstantsSize;
 
+	if (type == PipelineType::ShadowMap)
+	{
+		// Shadow pass only uses Vertex shader
+		pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	}
+
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutInfo.setLayoutCount = 1;
@@ -229,8 +251,8 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 	VkGraphicsPipelineCreateInfo graphicsPipelineInfo{};
 	graphicsPipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	graphicsPipelineInfo.pNext = &renderingInfo;
-	graphicsPipelineInfo.stageCount = 2;
-	graphicsPipelineInfo.pStages = shaderStages;
+	graphicsPipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
+	graphicsPipelineInfo.pStages = shaderStages.data();
 	graphicsPipelineInfo.pVertexInputState = &vertexInputInfo;
 	graphicsPipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
 	graphicsPipelineInfo.pViewportState = &viewportStateInfo;
@@ -288,6 +310,42 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 			depthStencil.depthWriteEnable = VK_FALSE;
 			depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 			colorBlendAttachment.blendEnable = VK_FALSE;
+			break;
+
+		case PipelineType::ShadowMap:
+			// Retrieve shadow vertex data
+			shadowBinding = ShadowVertex::getBindingDescription();
+			shadowAttributes = ShadowVertex::getAttributeDescription();
+
+			vertexInputInfo.vertexBindingDescriptionCount = 1;
+			vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+			vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(shadowAttributes.size());
+			vertexInputInfo.pVertexAttributeDescriptions = shadowAttributes.data();
+
+			// Depth-only rendering (no color attachment)
+			colorBlendInfo.attachmentCount = 0;
+			colorBlendInfo.pAttachments = nullptr;
+
+			// Raster
+			rasterizerInfo.cullMode = VK_CULL_MODE_BACK_BIT;
+			rasterizerInfo.depthBiasEnable = VK_TRUE;
+			rasterizerInfo.depthBiasConstantFactor = 1.25f;
+			rasterizerInfo.depthBiasSlopeFactor = 1.75f;
+
+			// Depth test/write
+			depthStencil.depthTestEnable = VK_TRUE;
+			depthStencil.depthWriteEnable = VK_TRUE;
+			depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+			depthStencil.stencilTestEnable = VK_FALSE;
+
+			// No MSAA for shadow maps
+			multisamplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+			// Adjust dynamic rendering info
+			renderingInfo.colorAttachmentCount = 0;
+			renderingInfo.pColorAttachmentFormats = nullptr;
+			renderingInfo.depthAttachmentFormat = depthFormat;
+			break;
 	}
 
 	if (vkCreateGraphicsPipelines(m_context.getDevice(), VK_NULL_HANDLE, 1, &graphicsPipelineInfo, nullptr, &m_pipeline) != VK_SUCCESS)
@@ -316,9 +374,18 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 			std::cout << "Graphics Pipeline (DebugAABB) created successfully" << std::endl;
 			nameObject(m_context.getDevice(), m_pipeline, "GraphicsPipeline_DebugAABB");
 			break;
+
+		case PipelineType::ShadowMap:
+			std::cout << "Graphics Pipeline (ShadowMap) created successfully" << std::endl;
+			nameObject(m_context.getDevice(), m_pipeline, "GraphicsPipeline_ShadowMap");
+			break;
 	}
 
-	// Destory shader modules after pipeline creation
-	vkDestroyShaderModule(m_context.getDevice(), vertModule, nullptr);
-	vkDestroyShaderModule(m_context.getDevice(), fragModule, nullptr);
+	for (VkShaderModule module: shaderModules)
+	{
+		if (module != VK_NULL_HANDLE)
+		{
+			vkDestroyShaderModule(m_context.getDevice(), module, nullptr);
+		}
+	}
 }
