@@ -39,6 +39,7 @@
 #include "Frustum.hpp" // Camera frustum data
 #include "AABB.hpp" // Axis-Aligned Bounding Boxes
 #include "TangentGen.hpp" // Use MikkTSpace standard to generate tangents
+#include "ShadowCascades.hpp" // For Cascaded Shadow Maps
 
 // Audio test
 SoLoud::Soloud gSoLoud; // SoLoud engine
@@ -1133,8 +1134,8 @@ void updateLighting(LightingData& lights, float deltaTime)
 		glm::vec3(0.0f, 0.0f, 1.0f) 
 	);
 
-	glm::vec4 newDir4 = rotationMatrix * glm::vec4(initialDir, 0.0f);
-	lights.dirLight.direction = glm::normalize(newDir4);
+	glm::vec4 newDir = rotationMatrix * glm::vec4(initialDir, 0.0f);
+	lights.dirLight.direction = glm::normalize(newDir);
 }
 
 void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime)

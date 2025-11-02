@@ -147,6 +147,9 @@
     <ClCompile Include="TangentGen.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="ShadowCascades.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\.gitignore">
@@ -230,6 +233,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\Include\ShadowVertex.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Include\ShadowCascades.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

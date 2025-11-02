@@ -182,6 +182,7 @@
     <ClCompile Include="ImGuiOverlay.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Pipeline.cpp" />
+    <ClCompile Include="ShadowCascades.cpp" />
     <ClCompile Include="Swapchain.cpp" />
     <ClCompile Include="Sync.cpp" />
     <ClCompile Include="TangentGen.cpp" />
@@ -210,6 +211,7 @@
     <ClInclude Include="..\Include\ImGuiOverlay.hpp" />
     <ClInclude Include="..\Include\Lights.hpp" />
     <ClInclude Include="..\Include\Pipeline.hpp" />
+    <ClInclude Include="..\Include\ShadowCascades.hpp" />
     <ClInclude Include="..\Include\ShadowVertex.hpp" />
     <ClInclude Include="..\Include\Swapchain.hpp" />
     <ClInclude Include="..\Include\Sync.hpp" />
