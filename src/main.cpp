@@ -233,9 +233,10 @@ int main()
 	image.createDepthImage(swapchain.getExtent().width, swapchain.getExtent().height);
 	image.createMSAAColorImage(swapchain.getExtent().width, swapchain.getExtent().height, swapchain.getFormat());
 
+	const uint32_t SHADOW_MAP_RES = 2048;
 	for (uint32_t i = 0; i < numCascades; ++i)
 	{
-		image.createShadowMap(swapchain.getExtent().width, swapchain.getExtent().height);
+		image.createShadowMap(SHADOW_MAP_RES, SHADOW_MAP_RES);
 	}
 
 	// Load textures and models

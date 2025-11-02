@@ -5,7 +5,7 @@ layout(push_constant) uniform PushConstants
 {
     mat4 view;
     mat4 proj;
-    mat4 lightViewProj;\
+    mat4 lightViewProj;
     vec3 cameraPos;
     int enableDirectionalLight;
     int enablePointLights;
@@ -18,7 +18,7 @@ layout(push_constant) uniform PushConstants
 
 layout(set = 0, binding = 1) uniform sampler2D tex[];
 layout(set = 0, binding = 3) uniform samplerCube skybox;
-layout(set = 0, binding = 5) uniform sampler2D shadowMap;
+layout(set = 0, binding = 5) uniform sampler2DShadow shadowMap;
 
 // In GLSL structs must be defined outside the buffer
 struct DirectionalLight
@@ -63,35 +63,47 @@ const int NO_TEXTURE = -1;
 
 float ShadowCalculation(vec4 lightSpacePos)
 {
-    // 1. Perspective Divide (convert clip space to normalized device coordinates (NDC))
+    // Perspective Divide (convert clip space to normalized device coordinates (NDC))
     vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
 
-    // 2. Transform to [0, 1] range (texture coordinates)
+    // Transform to [0, 1] range (texture coordinates)
     // Only transform X and Y to the [0, 1] range for texture sampling
     // Z is preserved as the NDC depth value
     projCoords = vec3(projCoords.xy * 0.5 + 0.5, projCoords.z);
 
-    // 3. Sample the shadow map
-    // We sample the depth map (shadowMap.r) at the x, y texture coordinates.
-    float closestDepth = texture(shadowMap, projCoords.xy).r; 
-
-    // 4. Current fragment depth (Z-value in light space)
-    float currentDepth = projCoords.z;
-
-    // 5. Bias to avoid "shadow acne"
-    // Use an empirical bias for now; a better solution is Normal Offset Bias.
-    float bias = 0.002; 
-
-    // 6. Perform the shadow test
-    // If the fragment's depth is greater than the closest depth in the shadow map, it's in shadow.
-    float shadow = currentDepth > closestDepth + bias ? 0.0 : 1.0;
-
-    // A check for fragments outside the light's frustum (projCoords.z > 1.0 or < 0.0)
+    // Hard check for fragments outside the light's frustum
     if (projCoords.z > 1.0 || projCoords.z < 0.0) {
-        shadow = 1.0;
+        return 1.0;
     }
 
-    return shadow;
+    // Current fragment depth (Z-value in light space)
+    float currentDepth = projCoords.z;
+    float shadow = 0.0;
+
+    // Percentage Closer Filtering
+    const int kernelSize = 1; 
+    
+    // Determine the texel size of the shadow map
+    // Hardcode 2k for now
+    float texelSize = 1.0 / 2048.0; 
+    
+    for (int x = -kernelSize; x <= kernelSize; ++x)
+    {
+        for (int y = -kernelSize; y <= kernelSize; ++y)
+        {
+            // Offset the sample point by a fraction of the texel size
+            vec2 offset = vec2(float(x), float(y)) * texelSize;
+
+            // The hardware sampler compares 'currentDepth' against the depth map 
+            // and returns 1.0 (lit) or 0.0 (shadowed).
+            // The result is stored in 'shadow' without manual comparison.
+            shadow += texture(shadowMap, vec3(projCoords.xy + offset, currentDepth));
+        }
+    }
+    
+    // Average the results
+    float numSamples = float((2 * kernelSize + 1) * (2 * kernelSize + 1));
+    return shadow / numSamples;
 }
 
 void main() {
