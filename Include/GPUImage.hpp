@@ -8,10 +8,12 @@
 struct ShadowMap
 {
 	VkImage image = VK_NULL_HANDLE;
-	VkImageView view = VK_NULL_HANDLE;
 	VmaAllocation allocation = VK_NULL_HANDLE;
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	VkExtent2D extent{};
+
+	VkImageView view = VK_NULL_HANDLE; // Primary view (for Attachment)
+	VkImageView debugView = VK_NULL_HANDLE; // Debug view (for ImGui sampling)
 };
 
 class Commands;

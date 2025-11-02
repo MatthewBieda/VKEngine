@@ -82,7 +82,7 @@ void ImGuiOverlay::init(GLFWwindow* window, VulkanContext& context, DescriptorMa
 	info.QueueFamily = context.getGraphicsQueueFamilyIndex();
 	info.Queue = context.getGraphicsQueue();
 	info.PipelineCache = VK_NULL_HANDLE;
-	info.DescriptorPoolSize = 3; // Use backend pools instead of mine
+	info.DescriptorPoolSize = 2; // Use backend pools instead of mine
 	info.RenderPass = VK_NULL_HANDLE;
 	info.Subpass = 0;
 	info.MinImageCount = imageCount;

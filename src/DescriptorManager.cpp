@@ -49,7 +49,7 @@ void DescriptorManager::updateTextureArray(const std::vector<VkImageView>& textu
 
 void DescriptorManager::createDescriptorSetLayout()
 {
-	std::array<VkDescriptorSetLayoutBinding, 5> bindings{};
+	std::array<VkDescriptorSetLayoutBinding, 6> bindings{};
 
 	// Storage buffer for per-object data
 	bindings[0].binding = 0;
@@ -81,18 +81,25 @@ void DescriptorManager::createDescriptorSetLayout()
 	bindings[4].descriptorCount = 1;
 	bindings[4].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
+	// Shadow map
+	bindings[5].binding = 5;
+	bindings[5].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[5].descriptorCount = 1; // One shadow map for now
+	bindings[5].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
 	// Enable descriptor indexing flags
 	VkDescriptorBindingFlags bindingFlags[] = {
-		0, // binding 0: (Object data)
-		VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT, // binding 1: (Texture array)
-		0, // binding 2: (Lighting data)
-		0, // binding 3: (Cubemap data)
-		0, // binding 4: (Visible index data)
+		0, // binding 0: Object data
+		VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT, // binding 1: Texture array
+		0, // binding 2: Lighting data
+		0, // binding 3: Cubemap data
+		0, // binding 4: Visible index data
+		0  // binding 5: Shadow Map
 	};
 
 	VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsInfo{};
 	bindingFlagsInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-	bindingFlagsInfo.bindingCount = 5;
+	bindingFlagsInfo.bindingCount = 6;
 	bindingFlagsInfo.pBindingFlags = bindingFlags;
 
 	VkDescriptorSetLayoutCreateInfo layoutInfo{};
@@ -113,7 +120,7 @@ void DescriptorManager::createDescriptorPool()
 {
 	std::array<VkDescriptorPoolSize, 2> poolSizes{};
 	poolSizes[0] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 3 }; // Per-instance data + lighting + Visible indexes
-	poolSizes[1] = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1001 }; // object texture + skybox
+	poolSizes[1] = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1002 }; // object texture + skybox + shadowmap
 
 	VkDescriptorPoolCreateInfo poolInfo{};
 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -157,19 +164,25 @@ void DescriptorManager::createDescriptorSet()
 	lightingInfo.offset = 0;
 	lightingInfo.range = m_buffer.getLightingBufferSize();
 
-	// Cubemao info
+	// Cubemap info
 	VkDescriptorImageInfo cubemapInfo{};
 	cubemapInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	cubemapInfo.imageView = m_image.getSkyboxImageView();
 	cubemapInfo.sampler = m_image.getSampler();
 
-	// [NEW] Visible Index Buffer Info (Binding 1)
+	// Visible Index Buffer Info
 	VkDescriptorBufferInfo visibleIndexInfo{};
 	visibleIndexInfo.buffer = m_buffer.getVisibleIndexBuffer();
 	visibleIndexInfo.offset = 0;
 	visibleIndexInfo.range = m_buffer.getVisibleIndexBufferSize();
 
-	std::array<VkWriteDescriptorSet, 4> persistentWrites{};
+	// Shadow map info
+	VkDescriptorImageInfo shadowMapInfo{};
+	shadowMapInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	shadowMapInfo.imageView = m_image.getShadowMaps()[0].view;
+	shadowMapInfo.sampler = m_image.getShadowSampler();
+
+	std::array<VkWriteDescriptorSet, 5> persistentWrites{};
 
 	// Per-instance SSBO
 	persistentWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -202,6 +215,14 @@ void DescriptorManager::createDescriptorSet()
 	persistentWrites[3].descriptorCount = 1;
 	persistentWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
 	persistentWrites[3].pBufferInfo = &visibleIndexInfo;
+
+	// Shadow map binding
+	persistentWrites[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	persistentWrites[4].dstSet = m_descriptorSet;
+	persistentWrites[4].dstBinding = 5;
+	persistentWrites[4].descriptorCount = 1;
+	persistentWrites[4].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	persistentWrites[4].pImageInfo = &shadowMapInfo;
 
 	vkUpdateDescriptorSets(m_context.getDevice(), static_cast<uint32_t>(persistentWrites.size()), persistentWrites.data(), 0, nullptr);
 }

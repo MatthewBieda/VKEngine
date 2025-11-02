@@ -31,11 +31,13 @@ layout(location = 1) out vec3 fragNormal; // World space normal
 layout(location = 2) out vec2 fragTexCoord;
 layout(location = 3) out vec3 fragTangent; // World space tangent
 layout(location = 4) out vec3 fragBitangent; // World space bitangent
+layout(location = 5) out vec4 fragLightSpacePos; // light space fragment position
 
 layout(push_constant) uniform PushConstants
 {
 	mat4 view;
 	mat4 proj;
+	mat4 lightViewProj;
 	vec3 cameraPos;
 } pc;
 
@@ -52,6 +54,9 @@ void main() {
 
 	mat4 modelMat = obj.model;
 	vec4 worldPos = modelMat * vec4(inPosition, 1.0);
+
+	// Calculate the position in the light's clip space
+	fragLightSpacePos = pc.lightViewProj * worldPos;
 
 	// Matrix for transforming Normals/Tangents
 	mat3 normalMat = mat3(transpose(inverse(modelMat)));

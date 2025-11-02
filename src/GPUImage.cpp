@@ -49,6 +49,7 @@ GPUImage::~GPUImage()
 	for (ShadowMap& sm: m_shadowMaps)
 	{
 		vkDestroyImageView(m_context.getDevice(), sm.view, nullptr);
+		vkDestroyImageView(m_context.getDevice(), sm.debugView, nullptr);
 		vmaDestroyImage(m_context.getAllocator(), sm.image, sm.allocation);
 	}
 	vkDestroySampler(m_context.getDevice(), m_shadowSampler, nullptr);
@@ -426,7 +427,6 @@ void GPUImage::createShadowMap(uint32_t width, uint32_t height, VkFormat format)
 	{
 		throw std::runtime_error("Failed to create shadow map image");
 	}
-	//nameObject(m_context.getDevice(), shadowMap.image, "Image_ShadowMap");
 
 	VkCommandBuffer cmd = m_commands.beginSingleTimeCommands();
 
@@ -441,8 +441,36 @@ void GPUImage::createShadowMap(uint32_t width, uint32_t height, VkFormat format)
 
 	m_commands.endSingleTimeCommands(cmd);
 
-	createImageView(sm.image, format, aspect, sm.view);
-	std::cout << "Depth Image View created successfully" << std::endl;
+	// Create primary image view (Identity swizzle)
+	VkImageViewCreateInfo viewInfoPrimary{};
+	viewInfoPrimary.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewInfoPrimary.image = sm.image;
+	viewInfoPrimary.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	viewInfoPrimary.format = format;
+	viewInfoPrimary.subresourceRange.aspectMask = aspect;
+	viewInfoPrimary.subresourceRange.baseMipLevel = 0;
+	viewInfoPrimary.subresourceRange.levelCount = 1;
+	viewInfoPrimary.subresourceRange.baseArrayLayer = 0;
+	viewInfoPrimary.subresourceRange.layerCount = 1;
+
+	if (vkCreateImageView(m_context.getDevice(), &viewInfoPrimary, nullptr, &sm.view) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create primary shadow image view");
+	}
+	std::cout << "Shadowmap primary image view created successfully" << std::endl;
+
+	// Create debug view (grayscale swizzle)
+	VkImageViewCreateInfo viewInfoDebug = viewInfoPrimary;
+
+	viewInfoDebug.components.r = VK_COMPONENT_SWIZZLE_R;
+	viewInfoDebug.components.g = VK_COMPONENT_SWIZZLE_R;
+	viewInfoDebug.components.b = VK_COMPONENT_SWIZZLE_R;
+
+	if (vkCreateImageView(m_context.getDevice(), &viewInfoDebug, nullptr, &sm.debugView) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create debug shadow image view");
+	}
+	std::cout << "Shadowmap debug image view created successfully" << std::endl;
 
 	// Only need one sampler for all cascades
 	if (m_shadowSampler == VK_NULL_HANDLE)

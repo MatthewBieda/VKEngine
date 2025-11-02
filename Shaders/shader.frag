@@ -5,6 +5,7 @@ layout(push_constant) uniform PushConstants
 {
     mat4 view;
     mat4 proj;
+    mat4 lightViewProj;\
     vec3 cameraPos;
     int enableDirectionalLight;
     int enablePointLights;
@@ -17,6 +18,7 @@ layout(push_constant) uniform PushConstants
 
 layout(set = 0, binding = 1) uniform sampler2D tex[];
 layout(set = 0, binding = 3) uniform samplerCube skybox;
+layout(set = 0, binding = 5) uniform sampler2D shadowMap;
 
 // In GLSL structs must be defined outside the buffer
 struct DirectionalLight
@@ -50,6 +52,7 @@ layout(location = 1) in vec3 fragNormal; // Original World Space normal
 layout(location = 2) in vec2 fragTexCoord;
 layout(location = 3) in vec3 fragTangent; // World space tangent
 layout(location = 4) in vec3 fragBitangent; // World space bitangent
+layout(location = 5) in vec4 fragLightSpacePos;
 
 layout(location = 0) out vec4 outColor;
 
@@ -57,6 +60,39 @@ layout(location = 0) out vec4 outColor;
 const float shininess = 32.0f;
 const float specularStrength = 0.1f;
 const int NO_TEXTURE = -1;
+
+float ShadowCalculation(vec4 lightSpacePos)
+{
+    // 1. Perspective Divide (convert clip space to normalized device coordinates (NDC))
+    vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
+
+    // 2. Transform to [0, 1] range (texture coordinates)
+    // Only transform X and Y to the [0, 1] range for texture sampling
+    // Z is preserved as the NDC depth value
+    projCoords = vec3(projCoords.xy * 0.5 + 0.5, projCoords.z);
+
+    // 3. Sample the shadow map
+    // We sample the depth map (shadowMap.r) at the x, y texture coordinates.
+    float closestDepth = texture(shadowMap, projCoords.xy).r; 
+
+    // 4. Current fragment depth (Z-value in light space)
+    float currentDepth = projCoords.z;
+
+    // 5. Bias to avoid "shadow acne"
+    // Use an empirical bias for now; a better solution is Normal Offset Bias.
+    float bias = 0.002; 
+
+    // 6. Perform the shadow test
+    // If the fragment's depth is greater than the closest depth in the shadow map, it's in shadow.
+    float shadow = currentDepth > closestDepth + bias ? 0.0 : 1.0;
+
+    // A check for fragments outside the light's frustum (projCoords.z > 1.0 or < 0.0)
+    if (projCoords.z > 1.0 || projCoords.z < 0.0) {
+        shadow = 1.0;
+    }
+
+    return shadow;
+}
 
 void main() {
 	// Debug: visualize normals as colors
@@ -102,6 +138,8 @@ void main() {
     vec3 diffuse = vec3(0.0);
     vec3 specular = vec3(0.0);
 
+    float shadowFactor = ShadowCalculation(fragLightSpacePos);
+
     // Directional light
     if (pc.enableDirectionalLight != 0) 
     {
@@ -109,10 +147,10 @@ void main() {
         vec3 H = normalize(Ldir + V);
 
         float diff = max(dot(N, Ldir), 0.0);
-        diffuse += diff * albedo * lighting.dirLight.color.rgb;
+        diffuse += diff * albedo * lighting.dirLight.color.rgb * shadowFactor;
 
         float specAmount = pow(max(dot(N, H), 0.0), shininess);
-        specular += specAmount * specularStrength * lighting.dirLight.color.rgb;
+        specular += specAmount * specularStrength * lighting.dirLight.color.rgb * shadowFactor;
     }
 
     // Point lights

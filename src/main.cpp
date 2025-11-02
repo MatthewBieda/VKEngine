@@ -51,6 +51,7 @@ struct PushConstants
 {
 	glm::mat4 view{};
 	glm::mat4 proj{};
+	glm::mat4 lightViewProj{};
 	alignas(16) glm::vec3 cameraPos{};
 	uint32_t enableDirectionalLight = 1;
 	uint32_t enablePointLights = 1;
@@ -186,10 +187,7 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass);
 
 enum class MeshType
 {
-	LightCaster,
-	Sponza,
-	AlphaTestedGrass,
-	GlassWindow,
+	GroundPlane,
 	Cube,
 	BrickWall
 };
@@ -251,10 +249,12 @@ int main()
 	};
 	image.createCubemap(skyBoxFaces);
 
-	uint32_t lightCaster = loadModel("../Models/LightCaster/lightCaster.obj", image);
-	uint32_t sponza = loadModel("../Models/SponzaSeparated/sponzaAABB.obj", image);
-	uint32_t alphaTestedGrass = loadModel("../Models/Grass/untitled.obj", image);
-	uint32_t glassWindow = loadModel("../Models/GlassWindow/glassWindow.obj", image);
+	//uint32_t lightCaster = loadModel("../Models/LightCaster/lightCaster.obj", image);
+	//uint32_t sponza = loadModel("../Models/SponzaSeparated/sponzaAABB.obj", image);
+	//uint32_t alphaTestedGrass = loadModel("../Models/Grass/untitled.obj", image);
+	//uint32_t glassWindow = loadModel("../Models/GlassWindow/glassWindow.obj", image);
+
+	uint32_t groundPlane = loadModel("../Models/GroundPlane/groundPlane.obj", image);
 	uint32_t cube = loadModel("../Models/Cube/cube.obj", image);
 	uint32_t brickWall = loadModel("../Models/BrickWall/BrickWall.obj", image);
 
@@ -279,7 +279,7 @@ int main()
 	imgui.init(window, context, descriptors, swapchain.getFormat(), swapchain.getImageCount(), image.getMSAASamples());
 
 	VkDescriptorSet shadowMapImGuiDescriptor = imgui.createImGuiTextureDescriptor(
-		image.getShadowMaps()[0].view,
+		image.getShadowMaps()[0].debugView,
 		image.getShadowSampler()
 	);
 
@@ -569,6 +569,20 @@ int main()
 
 		vkCmdPushConstants(cmd, shadowPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ShadowPushConstants), &shadowPC);
 
+		// Calculate dynamic offset for current frame
+		std::array<uint32_t, 3> dynamicOffsets = {
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedObjectSize()),
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize()),
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedVisibleIndexBufferSize())
+		};
+
+		vkCmdBindDescriptorSets(cmd,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			shadowPipeline.getLayout(),
+			0, 1, &set,
+			static_cast<uint32_t>(dynamicOffsets.size()),
+			dynamicOffsets.data());
+
 		// Bind vertex/index buffers
 		VkBuffer vertexBuffers[] = { buffer.getVertexBuffer() };
 		VkDeviceSize offsets[] = { 0 };
@@ -640,13 +654,6 @@ int main()
 		vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
 		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
-		// Calculate dynamic offset for current frame
-		std::array<uint32_t, 3> dynamicOffsets = {
-			static_cast<uint32_t>(currentFrame * buffer.getAlignedObjectSize()),
-			static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize()),
-			static_cast<uint32_t>(currentFrame * buffer.getAlignedVisibleIndexBufferSize())
-		};
-
 		vkCmdBindDescriptorSets(cmd, 
 			VK_PIPELINE_BIND_POINT_GRAPHICS, 
 			scenePipeline.getLayout(), 
@@ -654,6 +661,7 @@ int main()
 			static_cast<uint32_t>(dynamicOffsets.size()),
 			dynamicOffsets.data());
 
+		pc.lightViewProj = shadowPC.lightViewProj;
 		pc.cameraPos = camera.Position;
 		pc.enableDirectionalLight = imgui.enableDirectionalLight ? 1 : 0;
 		pc.enablePointLights = imgui.enablePointLights ? 1 : 0;
@@ -1069,92 +1077,21 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 
 void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 {
-	// Define spacing between cubes
-	float spacing = 3.0f;
-	uint32_t gridSize = 10;
-	uint32_t meshIndex = static_cast<uint32_t>(MeshType::Cube);
+	glm::vec3 pos{};
+	glm::mat4 model{};
+	uint32_t meshIndex{};
 
-	// Iterate rows
-	for (uint32_t x = 0; x < gridSize; ++x)
-	{
-		// Iterate cols
-		for (uint32_t z = 0; z < gridSize; ++z)
-		{
-			// Calculate the current cube's position
-			glm::vec3 pos = {
-				(float)x * spacing,
-				0.0f,
-				(float)z * spacing
-			};
-
-			glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-			objectData.push_back({ model, meshIndex });
-		}
-	}
-
-	// 3D cube grid
-	spacing = 1.0f; // Very dense spacing
-	uint32_t sizeX = 1;
-	uint32_t sizeY = 1;
-	uint32_t sizeZ = 1;
-	meshIndex = static_cast<uint32_t>(MeshType::Cube);
-
-	// Initial offset to place the grid away from the origin
-	glm::vec3 baseOffset = { 0.0f, 10.0f, 0.0f };
-
-	for (uint32_t x = 0; x < sizeX; ++x)
-	{
-		for (uint32_t y = 0; y < sizeY; ++y)
-		{
-			for (uint32_t z = 0; z < sizeZ; ++z)
-			{
-				glm::vec3 pos = {
-					baseOffset.x + (float)x * spacing,
-					baseOffset.y + (float)y * spacing,
-					baseOffset.z + (float)z * spacing
-				};
-
-				glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-				model = glm::scale(model, glm::vec3(0.4f));
-
-				objectData.push_back({ model, meshIndex });
-			}
-		}
-	}
-
-	// Add windows
-	spacing = 2.0f;
-	gridSize = 4;
-	meshIndex = static_cast<uint32_t>(MeshType::GlassWindow);
-
-	// Iterate rows
-	for (uint32_t x = 0; x < gridSize; ++x)
-	{
-		// Iterate cols
-		for (uint32_t z = 0; z < gridSize; ++z)
-		{
-			// Calculate the current cube's position
-			glm::vec3 pos = {
-				(float)x * spacing,
-				5.0f,
-				(float)z * spacing
-			};
-
-			glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-			objectData.push_back({ model, meshIndex });
-		}
-	}
-
-	// Add a sponza
-	glm::vec3 pos = { 50.0f, -10.0f, 5.0f };
-	glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-	meshIndex = static_cast<uint32_t>(MeshType::Sponza);
+	// Ground Plane
+	pos = { 0.0f, 0.0f, 0.0f };
+	model = glm::translate(glm::mat4(1.0f), pos);
+	meshIndex = static_cast<uint32_t>(MeshType::GroundPlane);
 	objectData.push_back({ model, meshIndex });
 
-	// Add brick wall
-	pos = { -10.0f, 0.0f, 0.0f };
+	// Cube
+	pos = { 0.0f, 3.0f, 0.0f };
 	model = glm::translate(glm::mat4(1.0f), pos);
-	meshIndex = static_cast<uint32_t>(MeshType::BrickWall);
+	model = glm::scale(model, glm::vec3(3.0f));
+	meshIndex = static_cast<uint32_t>(MeshType::Cube);
 	objectData.push_back({ model, meshIndex });
 
 	buffer.createObjectBuffer(objectData.size());
@@ -1173,47 +1110,10 @@ void setupLighting(GPUBuffer& buffer, LightingData& lights)
 
 void updateLighting(LightingData& lights, float deltaTime)
 {
-
 }
 
 void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime)
 {
-	// Static time variable for oscillation
-	static float t = 0.0f;
-	t += deltaTime;
-
-	// Pure rotation matrix for this frame
-	glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(60.0f * deltaTime), glm::vec3(0.0f, 1.0f, 0.0f));
-	// Calculate a pulsing scale factor between 1.0 and 2.0
-	float scaleFactor = 1.5f + 0.5f * glm::sin(t * 2.0f); // S = [1.0, 2.0]
-
-	// Reference object and extract world position
-	glm::mat4& cubeModel = objectData[0].model;
-	glm::vec3 cubePos = glm::vec3(cubeModel[3]);
-	
-	// Oscillate the cube up and down
-	float initialY = 0.0f;
-	cubePos.y = initialY + 3.0f * glm::sin(t * 0.5f);
-
-	// Uniform Scale Extraction: Calculate the length of the first basis vector (X-axis)
-	float oldScale = glm::length(glm::vec3(cubeModel[0]));
-
-	// Normalize the rotation/scale part (removes scale component)
-	cubeModel[0] = glm::vec4(glm::normalize(glm::vec3(cubeModel[0])), 0.0f);
-	cubeModel[1] = glm::vec4(glm::normalize(glm::vec3(cubeModel[1])), 0.0f);
-	cubeModel[2] = glm::vec4(glm::normalize(glm::vec3(cubeModel[2])), 0.0f);
-	cubeModel[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f); // Remove translation
-
-	// Apply pure rotation (on the left for local spin)
-	cubeModel = rotationMatrix * cubeModel;
-
-	// Restore new uniform scale
-	cubeModel[0] *= scaleFactor;
-	cubeModel[1] *= scaleFactor;
-	cubeModel[2] *= scaleFactor;
-
-	// Restore translation
-	cubeModel[3] = glm::vec4(cubePos, 1.0f);
 }
 
 std::vector<uint32_t> performFrustumCulling(std::vector<ObjectData>& objectData, const std::vector<Mesh>& allMeshes, const Frustum& frustum)
