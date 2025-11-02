@@ -431,7 +431,7 @@ int main()
 		pc.view = camera.GetViewMatrix();
 		pc.proj = glm::perspective(glm::radians(camera.Zoom),
 			(float)appState.windowWidth / (float)appState.windowHeight,
-			0.1f, 50.0f);
+			0.1f, 200.0f);
 		pc.proj[1][1] *= -1; // Flip Y for Vulkan
 
 		glm::mat4 viewProj = pc.proj * pc.view;
@@ -483,7 +483,7 @@ int main()
 		// Shadowmap render pass
 		// 1. Calculate light view-projection matrix
 		glm::vec3 lightDir = glm::normalize(glm::vec3(lights.dirLight.direction));
-		glm::vec3 lightPos = -lightDir * 20.0f;
+		glm::vec3 lightPos = -lightDir * 50.0f;
 
 		// create light view matrix (looking towards scene center)
 		glm::mat4 lightView = glm::lookAt(
@@ -493,11 +493,11 @@ int main()
 		);
 
 		// Orthographic projection for directional light
-		float orthoSize = 50.0f;
+		float orthoSize = 100.0f;
 		glm::mat4 lightProj = glm::ortho(
 			-orthoSize, orthoSize,
 			-orthoSize, orthoSize,
-			0.1f, 100.0f // near / far plaes
+			0.1f, 200.0f // near / far plaes
 		);
 		lightProj[1][1] *= -1; // y-flip for Vulkan
 
@@ -1085,6 +1085,7 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 	// Ground Plane
 	pos = { 0.0f, 0.0f, 0.0f };
 	model = glm::translate(glm::mat4(1.0f), pos);
+	model = glm::scale(model, glm::vec3(5.0f));
 	meshIndex = static_cast<uint32_t>(MeshType::GroundPlane);
 	objectData.push_back({ model, meshIndex });
 
@@ -1092,6 +1093,13 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 	pos = { 0.0f, 3.0f, 0.0f };
 	model = glm::translate(glm::mat4(1.0f), pos);
 	model = glm::scale(model, glm::vec3(3.0f));
+	meshIndex = static_cast<uint32_t>(MeshType::Cube);
+	objectData.push_back({ model, meshIndex });
+
+	// Cube 2: Medium Distance (Will start to look blocky)
+	pos = { 40.0f, 3.0f, -10.0f };
+	model = glm::translate(glm::mat4(1.0f), pos);
+	model = glm::scale(model, glm::vec3(1.5f));
 	meshIndex = static_cast<uint32_t>(MeshType::Cube);
 	objectData.push_back({ model, meshIndex });
 
@@ -1111,6 +1119,22 @@ void setupLighting(GPUBuffer& buffer, LightingData& lights)
 
 void updateLighting(LightingData& lights, float deltaTime)
 {
+	// Rotate light 
+	const float rotationSpeed = 0.02f;
+
+	static float totalAngle = 0.0f;
+	totalAngle += rotationSpeed * deltaTime;
+
+	glm::vec3 initialDir = glm::normalize(glm::vec3(-1.0f, -1.0f, -0.5f));
+
+	glm::mat4 rotationMatrix = glm::rotate(
+		glm::mat4(1.0f),
+		totalAngle,
+		glm::vec3(0.0f, 0.0f, 1.0f) 
+	);
+
+	glm::vec4 newDir4 = rotationMatrix * glm::vec4(initialDir, 0.0f);
+	lights.dirLight.direction = glm::normalize(newDir4);
 }
 
 void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime)

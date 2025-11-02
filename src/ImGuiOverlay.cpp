@@ -154,33 +154,38 @@ void ImGuiOverlay::drawUI()
 	// Control panel
 	ImGui::Begin("VKEngine Controls");
 
+	if (ImGui::CollapsingHeader("Global Rendering"))
+	{
+		ImGui::Checkbox("Enable Depth Test", &enableDepthTest);
+		ImGui::Checkbox("Enable Wireframe", &enableWireframe);
+		ImGui::Checkbox("Enable Normal Maps", &enableNormalMaps);
+	}
+
+	if (ImGui::CollapsingHeader("Lighting"))
+	{
+		ImGui::Checkbox("Enable Directional Light", &enableDirectionalLight);
+		ImGui::Checkbox("Enable Point Lights", &enablePointLights);
+	}
+
+	if (ImGui::CollapsingHeader("Debug"))
+	{
+		ImGui::Checkbox("Show Mesh AABB (Red)", &showMeshAABB);
+		ImGui::Checkbox("Show Submesh AABB (Green)", &showSubmeshAABB);
+		ImGui::Checkbox("Freeze Camera Frustum", &freezeFrustum);
+	}
+
+	if (ImGui::CollapsingHeader("Render Targets"))
+	{
+		ImGui::Checkbox("Show Shadow Map", &showShadowMap);
+	}
+
 	ImGui::Separator();
-
-	ImGui::Checkbox("Enable Depth Test", &enableDepthTest);
-	ImGui::Checkbox("Enable Wireframe", &enableWireframe);
-	ImGui::Checkbox("Enable Normal Maps", &enableNormalMaps);
-
-	ImGui::Separator();
-	ImGui::Text("Lighting");
-	ImGui::Checkbox("Enable Directional Light", &enableDirectionalLight);
-	ImGui::Checkbox("Enable Point Lights", &enablePointLights);
-
-	ImGui::Separator();
-	ImGui::Text("Debug Views");
-	ImGui::Checkbox("Show shadow map", &showShadowMap);
-
+	ImGui::Text("Metrics");
 	ImGui::Checkbox("Show Metrics", &showMetrics);
 	if (showMetrics)
 	{
 		ImGui::ShowMetricsWindow(&showMetrics);
 	}
-
-	ImGui::Checkbox("Freeze Camera Frustum", &freezeFrustum);
-
-	ImGui::Separator();
-	ImGui::Text("Debug Visualization");
-	ImGui::Checkbox("Show Mesh AABB (Red)", &showMeshAABB);
-	ImGui::Checkbox("Show Submesh AABB (Green)", &showSubmeshAABB);
 
 	ImGui::End();
 }
