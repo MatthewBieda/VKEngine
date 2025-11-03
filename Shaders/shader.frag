@@ -1,11 +1,16 @@
 #version 450
 #extension GL_EXT_nonuniform_qualifier : require
 
+layout(set = 0, binding = 6) uniform CascadeBuffer
+{
+    mat4 cascadeViewProjs[4];
+    vec4 cascadeSplits;
+} cascadeData;
+
 layout(push_constant) uniform PushConstants
 {
     mat4 view;
     mat4 proj;
-    mat4 lightViewProj;
     vec3 cameraPos;
     int enableDirectionalLight;
     int enablePointLights;
@@ -18,7 +23,7 @@ layout(push_constant) uniform PushConstants
 
 layout(set = 0, binding = 1) uniform sampler2D tex[];
 layout(set = 0, binding = 3) uniform samplerCube skybox;
-layout(set = 0, binding = 5) uniform sampler2DShadow shadowMap;
+layout(set = 0, binding = 5) uniform sampler2DShadow shadowMaps[4];
 
 // In GLSL structs must be defined outside the buffer
 struct DirectionalLight
@@ -52,7 +57,7 @@ layout(location = 1) in vec3 fragNormal; // Original World Space normal
 layout(location = 2) in vec2 fragTexCoord;
 layout(location = 3) in vec3 fragTangent; // World space tangent
 layout(location = 4) in vec3 fragBitangent; // World space bitangent
-layout(location = 5) in vec4 fragLightSpacePos;
+layout(location = 5) in vec4 fragLightSpacePos[4]; // One per cascade
 
 layout(location = 0) out vec4 outColor;
 
@@ -61,10 +66,23 @@ const float shininess = 32.0f;
 const float specularStrength = 0.1f;
 const int NO_TEXTURE = -1;
 
-float ShadowCalculation(vec4 lightSpacePos)
+// Select cascade based on view-space depth
+int SelectCascade(float viewDepth)
 {
+    // Compare against cascade split distances
+    if (viewDepth < cascadeData.cascadeSplits.x) return 0;
+    if (viewDepth < cascadeData.cascadeSplits.y) return 1;
+    if (viewDepth < cascadeData.cascadeSplits.z) return 2;
+    return 3;
+}
+
+float ShadowCalculation(vec4 lightSpacePos[4], float viewDepth)
+{
+    int cascadeIndex = SelectCascade(viewDepth);
+    vec4 lightSpacePosition = lightSpacePos[cascadeIndex];
+
     // Perspective Divide (convert clip space to normalized device coordinates (NDC))
-    vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
+    vec3 projCoords = lightSpacePosition.xyz / lightSpacePosition.w;
 
     // Transform to [0, 1] range (texture coordinates)
     // Only transform X and Y to the [0, 1] range for texture sampling
@@ -97,7 +115,7 @@ float ShadowCalculation(vec4 lightSpacePos)
             // The hardware sampler compares 'currentDepth' against the depth map 
             // and returns 1.0 (lit) or 0.0 (shadowed).
             // The result is stored in 'shadow' without manual comparison.
-            shadow += texture(shadowMap, vec3(projCoords.xy + offset, currentDepth));
+            shadow += texture(shadowMaps[cascadeIndex], vec3(projCoords.xy + offset, currentDepth));
         }
     }
     
@@ -150,7 +168,11 @@ void main() {
     vec3 diffuse = vec3(0.0);
     vec3 specular = vec3(0.0);
 
-    float shadowFactor = ShadowCalculation(fragLightSpacePos);
+    // Calculate the view-space depth for cascade selection
+    vec4 viewPos = pc.view * vec4(fragPos, 1.0);
+    float viewDepth = abs(viewPos.z);
+
+    float shadowFactor = ShadowCalculation(fragLightSpacePos, viewDepth);
 
     // Directional light
     if (pc.enableDirectionalLight != 0) 

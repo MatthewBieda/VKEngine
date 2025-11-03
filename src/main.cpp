@@ -52,7 +52,6 @@ struct PushConstants
 {
 	glm::mat4 view{};
 	glm::mat4 proj{};
-	glm::mat4 lightViewProj{};
 	alignas(16) glm::vec3 cameraPos{};
 	uint32_t enableDirectionalLight = 1;
 	uint32_t enablePointLights = 1;
@@ -62,7 +61,14 @@ struct PushConstants
 	uint32_t enableNormalMaps = 1;
 	float reflectionStrength = 0.0f;
 	uint32_t padding1 = 0;
+	uint32_t padding2 = 0;
 } pc;
+
+struct CascadeData
+{
+	glm::mat4 cascadeViewProjs[ShadowCascades::NUM_CASCADES]{}; // All cascade matrices
+	glm::vec4 cascadeSplits{}; // Store split distances (x, y, z, w for 4 cascades)
+} cascadeData;
 
 struct DebugPushConstants
 {
@@ -223,8 +229,6 @@ int main()
 	gSoLoud.init();
 	gWave.load("../Audio/shadowing.wav");
 
-	uint32_t numCascades = 1;
-
 	VulkanContext context(window);
 	Swapchain swapchain(window, context);
 	Commands commands(context, MAX_FRAMES_IN_FLIGHT);
@@ -235,7 +239,7 @@ int main()
 	image.createMSAAColorImage(swapchain.getExtent().width, swapchain.getExtent().height, swapchain.getFormat());
 
 	const uint32_t SHADOW_MAP_RES = 2048;
-	for (uint32_t i = 0; i < numCascades; ++i)
+	for (uint32_t i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
 	{
 		image.createShadowMap(SHADOW_MAP_RES, SHADOW_MAP_RES);
 	}
@@ -264,6 +268,7 @@ int main()
 	GPUBuffer buffer(context, commands, allVertices, allIndices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
 	setupLighting(buffer, lights);
 	setupSceneObjects(buffer, objectData);
+	buffer.createCascadeBuffer(sizeof(CascadeData));
 
 	// Setup descriptors and pipelines
 	DescriptorManager descriptors(context, buffer, image);
@@ -280,10 +285,14 @@ int main()
 	ImGuiOverlay imgui;
 	imgui.init(window, context, descriptors, swapchain.getFormat(), swapchain.getImageCount(), image.getMSAASamples());
 
-	VkDescriptorSet shadowMapImGuiDescriptor = imgui.createImGuiTextureDescriptor(
-		image.getShadowMaps()[0].debugView,
-		image.getShadowSampler()
-	);
+	std::array<VkDescriptorSet, ShadowCascades::NUM_CASCADES> shadowMapImGuiDescriptors;
+	for (uint32_t i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
+	{
+		shadowMapImGuiDescriptors[i] = imgui.createImGuiTextureDescriptor(
+			image.getShadowMaps()[i].debugView,
+			image.getShadowSampler()
+		);
+	}
 
 	//Debug labels
 	VkDebugUtilsLabelEXT opaquePassLabel = makeLabel("Opaque Pass", 0.0f, 1.0f, 0.0f);
@@ -413,7 +422,9 @@ int main()
 	// Begin background music
 	//gSoLoud.play(gWave, 0.3f, 0.0f, 0.0);
 
+	ShadowCascades shadowCascades{};
 	double lastTime{};
+
 	while (!glfwWindowShouldClose(window))
 	{
 		double currentTime = glfwGetTime();
@@ -435,6 +446,27 @@ int main()
 			0.1f, 200.0f);
 		pc.proj[1][1] *= -1; // Flip Y for Vulkan
 
+		// Calculate the new shadow cascade matrices based on the current camera view/proj
+		shadowCascades.updateCascades(
+			camera.Position,        // camPos
+			camera.Front,           // camFront
+			camera.Up,              // camUp
+			camera.Right,           // camRight
+			camera.Zoom,            // fov
+			(float)appState.windowWidth / (float)appState.windowHeight,
+			glm::normalize(glm::vec3(lights.dirLight.direction)), // lightDir
+			0.1f,                   // near plane
+			200.0f,                 // far plane
+			0.95f                   // lambda
+		);
+		const std::vector<ShadowCascades::CascadeData>& cascades = shadowCascades.getCascades();
+
+		for (int i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
+		{
+			cascadeData.cascadeViewProjs[i] = cascades[i].viewProj;
+		}
+		cascadeData.cascadeSplits = glm::vec4(cascades[0].farDepth, cascades[1].farDepth, cascades[2].farDepth, cascades[3].farDepth);
+
 		glm::mat4 viewProj = pc.proj * pc.view;
 		frustum.update(viewProj);
 
@@ -455,6 +487,7 @@ int main()
 		// Update GPU resources
 		buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData), currentFrame);
 		buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);
+		buffer.updateCascadeBuffer(&cascadeData, sizeof(CascadeData), currentFrame);
 		if (!globalVisibleIndices.empty())
 		{
 			buffer.updateVisibleIndexBuffer(globalVisibleIndices.data(), globalVisibleIndices.size() * sizeof(uint32_t), currentFrame);
@@ -482,135 +515,119 @@ int main()
 		vkBeginCommandBuffer(cmd, &beginInfo);
 
 		// Shadowmap render pass
-		// 1. Calculate light view-projection matrix
-		glm::vec3 lightDir = glm::normalize(glm::vec3(lights.dirLight.direction));
-		glm::vec3 lightPos = -lightDir * 50.0f;
-
-		// create light view matrix (looking towards scene center)
-		glm::mat4 lightView = glm::lookAt(
-			lightPos,
-			glm::vec3(0.0f), // scene center
-			glm::vec3(0.0f, 1.0f, 0.0f) // up vector
-		);
-
-		// Orthographic projection for directional light
-		float orthoSize = 100.0f;
-		glm::mat4 lightProj = glm::ortho(
-			-orthoSize, orthoSize,
-			-orthoSize, orthoSize,
-			0.1f, 200.0f // near / far plaes
-		);
-		lightProj[1][1] *= -1; // y-flip for Vulkan
-
-		shadowPC.lightViewProj = lightProj * lightView;
-
-		// 2. Transition shadowmap to attachment optimal
-		VkImageMemoryBarrier2 shadowBarrier{};
-		shadowBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-		shadowBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-		shadowBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-		shadowBarrier.dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
-		shadowBarrier.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-		shadowBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		shadowBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		shadowBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		shadowBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		shadowBarrier.image = image.getShadowMaps()[0].image; // first cascade
-		shadowBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-		shadowBarrier.subresourceRange.baseMipLevel = 0;
-		shadowBarrier.subresourceRange.levelCount = 1;
-		shadowBarrier.subresourceRange.baseArrayLayer = 0;
-		shadowBarrier.subresourceRange.layerCount = 1;
-
-		VkDependencyInfo shadowDepInfo{};
-		shadowDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-		shadowDepInfo.imageMemoryBarrierCount = 1;
-		shadowDepInfo.pImageMemoryBarriers = &shadowBarrier;
-
-		vkCmdPipelineBarrier2(cmd, &shadowDepInfo);
-
-		// 3. Shadow Pass rendering info
-		VkRenderingAttachmentInfo shadowDepthAttachment{};
-		shadowDepthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		shadowDepthAttachment.imageView = image.getShadowMaps()[0].view;
-		shadowDepthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		shadowDepthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		shadowDepthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		shadowDepthAttachment.clearValue.depthStencil = { 1.0f, 0 };
-
-		VkRenderingInfo shadowRenderingInfo{};
-		shadowRenderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-		shadowRenderingInfo.renderArea.offset = { 0, 0 };
-		shadowRenderingInfo.renderArea.extent = image.getShadowMaps()[0].extent;
-		shadowRenderingInfo.layerCount = 1;
-		shadowRenderingInfo.colorAttachmentCount = 0; // depth only
-		shadowRenderingInfo.pDepthAttachment = &shadowDepthAttachment;
-
-		// 4. Render into shadow map
-		vkCmdBeginRendering(cmd, &shadowRenderingInfo);
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowPipeline.getPipeline());
-
-		VkViewport shadowViewport{};
-		shadowViewport.x = 0.0f;
-		shadowViewport.y = 0.0f;
-		shadowViewport.width = (float)image.getShadowMaps()[0].extent.width;
-		shadowViewport.height = (float)image.getShadowMaps()[0].extent.height;
-		shadowViewport.minDepth = 0.0f;
-		shadowViewport.maxDepth = 1.0f;
-
-		VkRect2D shadowScissor{};
-		shadowScissor.offset = { 0, 0 };
-		shadowScissor.extent = image.getShadowMaps()[0].extent;
-
-		// set all dynamic state
-		shadowPipeline.setViewport(cmd, shadowViewport);
-		shadowPipeline.setScissor(cmd, shadowScissor);
-		shadowPipeline.setCullMode(cmd, VK_CULL_MODE_BACK_BIT);
-		shadowPipeline.setDepthTest(cmd, VK_TRUE);
-		shadowPipeline.setPolygonMode(cmd, VK_POLYGON_MODE_FILL);
-
-		vkCmdPushConstants(cmd, shadowPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ShadowPushConstants), &shadowPC);
-
-		// Calculate dynamic offset for current frame
-		std::array<uint32_t, 3> dynamicOffsets = {
-			static_cast<uint32_t>(currentFrame * buffer.getAlignedObjectSize()),
-			static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize()),
-			static_cast<uint32_t>(currentFrame * buffer.getAlignedVisibleIndexBufferSize())
-		};
-
-		vkCmdBindDescriptorSets(cmd,
-			VK_PIPELINE_BIND_POINT_GRAPHICS,
-			shadowPipeline.getLayout(),
-			0, 1, &set,
-			static_cast<uint32_t>(dynamicOffsets.size()),
-			dynamicOffsets.data());
-
-		// Bind vertex/index buffers
-		VkBuffer vertexBuffers[] = { buffer.getVertexBuffer() };
-		VkDeviceSize offsets[] = { 0 };
-		vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
-		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
-
-		// Draw opaque objects only (no transparent/alpha-tested for shadows)
-		for (uint32_t matIdx = 0; matIdx < drawLists.opaque.size(); ++matIdx)
+		for (uint32_t i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
 		{
-			const std::vector<DrawCommand>& drawCmds = drawLists.opaque[matIdx];
-			for (const DrawCommand& drawCmd: drawCmds)
+			const auto& cascade = cascades[i];
+			shadowPC.lightViewProj = cascade.viewProj;
+
+			// 1. Transition shadowmap to attachment optimal
+			VkImageMemoryBarrier2 shadowBarrier{};
+			shadowBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+			shadowBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+			shadowBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+			shadowBarrier.dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
+			shadowBarrier.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			shadowBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			shadowBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+			shadowBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			shadowBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			shadowBarrier.image = image.getShadowMaps()[i].image;
+			shadowBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+			shadowBarrier.subresourceRange.baseMipLevel = 0;
+			shadowBarrier.subresourceRange.levelCount = 1;
+			shadowBarrier.subresourceRange.baseArrayLayer = 0;
+			shadowBarrier.subresourceRange.layerCount = 1;
+
+			VkDependencyInfo shadowDepInfo{};
+			shadowDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+			shadowDepInfo.imageMemoryBarrierCount = 1;
+			shadowDepInfo.pImageMemoryBarriers = &shadowBarrier;
+
+			vkCmdPipelineBarrier2(cmd, &shadowDepInfo);
+
+			// 2. Shadow Pass rendering info
+			VkRenderingAttachmentInfo shadowDepthAttachment{};
+			shadowDepthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+			shadowDepthAttachment.imageView = image.getShadowMaps()[i].view;
+			shadowDepthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+			shadowDepthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+			shadowDepthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+			shadowDepthAttachment.clearValue.depthStencil = { 1.0f, 0 };
+
+			VkRenderingInfo shadowRenderingInfo{};
+			shadowRenderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+			shadowRenderingInfo.renderArea.offset = { 0, 0 };
+			shadowRenderingInfo.renderArea.extent = image.getShadowMaps()[i].extent;
+			shadowRenderingInfo.layerCount = 1;
+			shadowRenderingInfo.colorAttachmentCount = 0; // depth only
+			shadowRenderingInfo.pDepthAttachment = &shadowDepthAttachment;
+
+			// 3. Render into shadow map
+			vkCmdBeginRendering(cmd, &shadowRenderingInfo);
+			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowPipeline.getPipeline());
+
+			VkViewport shadowViewport{};
+			shadowViewport.x = 0.0f;
+			shadowViewport.y = 0.0f;
+			shadowViewport.width = (float)image.getShadowMaps()[i].extent.width;
+			shadowViewport.height = (float)image.getShadowMaps()[i].extent.height;
+			shadowViewport.minDepth = 0.0f;
+			shadowViewport.maxDepth = 1.0f;
+
+			VkRect2D shadowScissor{};
+			shadowScissor.offset = { 0, 0 };
+			shadowScissor.extent = image.getShadowMaps()[i].extent;
+
+			// set all dynamic state
+			shadowPipeline.setViewport(cmd, shadowViewport);
+			shadowPipeline.setScissor(cmd, shadowScissor);
+			shadowPipeline.setCullMode(cmd, VK_CULL_MODE_BACK_BIT);
+			shadowPipeline.setDepthTest(cmd, VK_TRUE);
+			shadowPipeline.setPolygonMode(cmd, VK_POLYGON_MODE_FILL);
+
+			vkCmdPushConstants(cmd, shadowPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ShadowPushConstants), &shadowPC);
+
+			// Calculate dynamic offset for current frame
+			std::array<uint32_t, 4> dynamicOffsets = {
+				static_cast<uint32_t>(currentFrame * buffer.getAlignedObjectSize()),
+				static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize()),
+				static_cast<uint32_t>(currentFrame * buffer.getAlignedVisibleIndexBufferSize()),
+				static_cast<uint32_t>(currentFrame * buffer.getAlignedCascadeSize()),
+			};
+
+			vkCmdBindDescriptorSets(cmd,
+				VK_PIPELINE_BIND_POINT_GRAPHICS,
+				shadowPipeline.getLayout(),
+				0, 1, &set,
+				static_cast<uint32_t>(dynamicOffsets.size()),
+				dynamicOffsets.data());
+
+			// Bind vertex/index buffers
+			VkBuffer vertexBuffers[] = { buffer.getVertexBuffer() };
+			VkDeviceSize offsets[] = { 0 };
+			vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
+			vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
+
+			// Draw opaque objects only (no transparent/alpha-tested for shadows)
+			for (uint32_t matIdx = 0; matIdx < drawLists.opaque.size(); ++matIdx)
 			{
-				vkCmdDrawIndexed(cmd, drawCmd.indexCount, drawCmd.instanceCount, drawCmd.firstIndex, drawCmd.vertexOffset, drawCmd.firstInstance);
+				const std::vector<DrawCommand>& drawCmds = drawLists.opaque[matIdx];
+				for (const DrawCommand& drawCmd : drawCmds)
+				{
+					vkCmdDrawIndexed(cmd, drawCmd.indexCount, drawCmd.instanceCount, drawCmd.firstIndex, drawCmd.vertexOffset, drawCmd.firstInstance);
+				}
 			}
+			vkCmdEndRendering(cmd);
+
+			// 4. Transition shadow map to shader read
+			shadowBarrier.srcStageMask = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+			shadowBarrier.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			shadowBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+			shadowBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+			shadowBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+			shadowBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			vkCmdPipelineBarrier2(cmd, &shadowDepInfo);
 		}
-		vkCmdEndRendering(cmd);
-
-		// 5. Transition shadow map to shader read
-		shadowBarrier.srcStageMask = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
-		shadowBarrier.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-		shadowBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-		shadowBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-		shadowBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		shadowBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-		vkCmdPipelineBarrier2(cmd, &shadowDepInfo);
 
 		// Transition swapchain to attachment
 		preRenderBarrier.image = swapchain.getSwapchainImage(imageIndex);
@@ -653,8 +670,17 @@ int main()
 		scenePipeline.setDepthTest(cmd, imgui.enableDepthTest);
 		scenePipeline.setPolygonMode(cmd, polygonMode);
 
+		VkBuffer vertexBuffers[] = { buffer.getVertexBuffer() };
+		VkDeviceSize offsets[] = { 0 };
 		vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
 		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
+
+		std::array<uint32_t, 4> dynamicOffsets = {
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedObjectSize()),
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize()),
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedVisibleIndexBufferSize()),
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedCascadeSize()),
+		};
 
 		vkCmdBindDescriptorSets(cmd, 
 			VK_PIPELINE_BIND_POINT_GRAPHICS, 
@@ -663,7 +689,6 @@ int main()
 			static_cast<uint32_t>(dynamicOffsets.size()),
 			dynamicOffsets.data());
 
-		pc.lightViewProj = shadowPC.lightViewProj;
 		pc.cameraPos = camera.Position;
 		pc.enableDirectionalLight = imgui.enableDirectionalLight ? 1 : 0;
 		pc.enablePointLights = imgui.enablePointLights ? 1 : 0;
@@ -828,7 +853,7 @@ int main()
 
 		// 5. UI pass
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &imguiPassLabel);
-		imgui.drawShadowMapVisualization(shadowMapImGuiDescriptor);
+		imgui.drawShadowMapVisualization(shadowMapImGuiDescriptors);
 		imgui.render();
 
 		imguiColorAttachment.imageView = swapchain.getSwapchainImageView(imageIndex);

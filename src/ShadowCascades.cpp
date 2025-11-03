@@ -1,154 +1,169 @@
 #include "ShadowCascades.hpp"
-#include <algorithm>
+#include <gtc/matrix_transform.hpp>
+#include <iostream>
 #include <limits>
+#include <algorithm>
 #include <cmath>
-#include "gtc/matrix_transform.hpp"
+#define GLM_ENABLE_EXPERIMENTAL
+#include <gtx/string_cast.hpp>
 
-void ShadowCascades::calculateSplitDepths(float near, float far, float lambda)
+void ShadowCascades::updateCascades(
+    const glm::vec3& camPos,
+    const glm::vec3& camFront,
+    const glm::vec3& camUp,
+    const glm::vec3& camRight,
+    float fov,
+    float aspect,
+    const glm::vec3& lightDir,
+    float nearPlane,
+    float farPlane,
+    float lambda)
 {
-	m_splitDepths.resize(NUM_CASCADES);
+    // Compute split depths (absolute)
+    m_splitDepths.resize(NUM_CASCADES);
+    float clipRange = farPlane - nearPlane;
+    float ratio = farPlane / nearPlane;
+    for (uint32_t i = 0; i < NUM_CASCADES; ++i)
+    {
+        float p = (i + 1) / static_cast<float>(NUM_CASCADES);
+        float log = nearPlane * std::pow(ratio, p);
+        float uniform = nearPlane + clipRange * p;
+        m_splitDepths[i] = lambda * log + (1.0f - lambda) * uniform;
+    }
 
-	float clipRange = far - near;
-	float minZ = near;
-	float maxZ = near + clipRange;
-	float range = maxZ - minZ;
-	float ratio = maxZ / minZ;
+    glm::vec3 lightDirNormalized = glm::normalize(lightDir);
+    m_cascades.resize(NUM_CASCADES);
 
-	for (uint32_t i = 0; i < NUM_CASCADES; ++i)
-	{
-		float p = (i + 1) / static_cast<float>(NUM_CASCADES);
-		float log = minZ * std::pow(ratio, p);
-		float uniform = minZ + range * p;
-		float d = lambda * (log - uniform) + uniform;
-		m_splitDepths[i] = (d - near) / clipRange;
-	}
+    float lastSplit = nearPlane;
+    for (uint32_t i = 0; i < NUM_CASCADES; ++i)
+    {
+        float cascadeNear = lastSplit;
+        float cascadeFar = m_splitDepths[i];
+
+        std::vector<glm::vec3> frustumCorners = getCascadeFrustumCorners(
+            camPos, camFront, camUp, camRight, fov, aspect, cascadeNear, cascadeFar
+        );
+
+        m_cascades[i].viewProj = calculateLightMatrix(frustumCorners, lightDirNormalized);
+        m_cascades[i].nearDepth = cascadeNear;
+        m_cascades[i].farDepth = cascadeFar;
+
+        lastSplit = cascadeFar;
+    }
 }
 
-std::vector<glm::vec3> ShadowCascades::getFrustumCornersWorldSpace(const glm::mat4& viewProj)
+std::vector<glm::vec3> ShadowCascades::getCascadeFrustumCorners(
+    const glm::vec3& camPos,
+    const glm::vec3& camFront,
+    const glm::vec3& camUp,
+    const glm::vec3& camRight,
+    float fov,
+    float aspect,
+    float nearPlane,
+    float farPlane)
 {
-	std::vector<glm::vec3> corners;
-	corners.reserve(8);
+    std::vector<glm::vec3> corners(8);
 
-	glm::mat4 inv = glm::inverse(viewProj);
+    float tanHalfVFOV = tanf(glm::radians(fov * 0.5f));
+    float tanHalfHFOV = tanHalfVFOV * aspect;
 
-	for (uint32_t x = 0; x < 2; ++x)
-	{
-		for (uint32_t y = 0; y < 2; ++y)
-		{
-			for (uint32_t z = 0; z < 2; ++z)
-			{
-				glm::vec4 pt = inv * glm::vec4(
-					2.0f * x - 1.0f,
-					2.0f * y - 1.0f,
-					2.0f * z - 1.0f,
-					1.0f
-				);
-				corners.push_back(glm::vec3(pt) / pt.w);
-			}
-		}
-	}
+    // Compute centers of near and far planes
+    glm::vec3 nc = camPos + camFront * nearPlane;
+    glm::vec3 fc = camPos + camFront * farPlane;
 
-	return corners;
+    // Compute half-sizes of near/far planes
+    float nearHalfHeight = tanHalfVFOV * nearPlane;
+    float nearHalfWidth = tanHalfHFOV * nearPlane;
+    float farHalfHeight = tanHalfVFOV * farPlane;
+    float farHalfWidth = tanHalfHFOV * farPlane;
+
+    // Build frustum corners
+    corners[0] = nc + camUp * nearHalfHeight - camRight * nearHalfWidth; // near top-left
+    corners[1] = nc + camUp * nearHalfHeight + camRight * nearHalfWidth; // near top-right
+    corners[2] = nc - camUp * nearHalfHeight - camRight * nearHalfWidth; // near bottom-left
+    corners[3] = nc - camUp * nearHalfHeight + camRight * nearHalfWidth; // near bottom-right
+
+    corners[4] = fc + camUp * farHalfHeight - camRight * farHalfWidth;   // far top-left
+    corners[5] = fc + camUp * farHalfHeight + camRight * farHalfWidth;   // far top-right
+    corners[6] = fc - camUp * farHalfHeight - camRight * farHalfWidth;   // far bottom-left
+    corners[7] = fc - camUp * farHalfHeight + camRight * farHalfWidth;   // far bottom-right
+
+    glm::vec3 minC = corners[0], maxC = corners[0];
+    for (int i = 1; i < 8; ++i) {
+        minC = glm::min(minC, corners[i]);
+        maxC = glm::max(maxC, corners[i]);
+    }
+    glm::vec3 size = maxC - minC;
+
+    return corners;
 }
 
-glm::mat4 ShadowCascades::calculateLightMatrix(const std::vector<glm::vec3>& frustumCorners, const glm::vec3& lightDirNormalized)
+glm::mat4 ShadowCascades::calculateLightMatrix(
+    const std::vector<glm::vec3>& frustumCorners,
+    const glm::vec3& lightDirNormalized)
 {
-	// Computes light-space view-projection matrix for a given camera frustum split.
-	// Ensures stable texel alignment and dynamically adjusts light position to minimize shimmering.
-
-    // Compute frustum center
+    // 1. Compute frustum center
     glm::vec3 center(0.0f);
     for (const auto& v : frustumCorners) center += v;
     center /= static_cast<float>(frustumCorners.size());
 
-    constexpr float LIGHT_OFFSET = 50.0f;
+    // 2. Compute light view
+    glm::vec3 up(0.0f, 1.0f, 0.0f);
+    if (std::abs(glm::dot(up, lightDirNormalized)) > 0.99f)
+        up = glm::vec3(1.0f, 0.0f, 0.0f);
 
-    // First pass: rough lightView to estimate bounds
-    glm::vec3 tempLightPos = center - lightDirNormalized * (LIGHT_OFFSET + 100.0f);
-    glm::mat4 tempLightView = glm::lookAt(tempLightPos, center, glm::vec3(0.0f, 1.0f, 0.0f));
+    // 3. Compute temporary light view
+    glm::mat4 lightViewTemp = glm::lookAt(center - lightDirNormalized * 1.0f, center, up);
 
-    glm::vec3 minLS(std::numeric_limits<float>::infinity());
-    glm::vec3 maxLS(-std::numeric_limits<float>::infinity());
+    // 4. Transform frustum corners into light space
+    std::vector<glm::vec3> cornersLS;
+    cornersLS.reserve(frustumCorners.size());
     for (const auto& v : frustumCorners)
+        cornersLS.push_back(glm::vec3(lightViewTemp * glm::vec4(v, 1.0f)));
+
+    // 5. Compute bounds in light space
+    glm::vec3 minLS(std::numeric_limits<float>::max());
+    glm::vec3 maxLS(std::numeric_limits<float>::lowest());
+    for (const auto& v : cornersLS)
     {
-        glm::vec4 vLS4 = tempLightView * glm::vec4(v, 1.0f);
-        glm::vec3 vLS = glm::vec3(vLS4) / vLS4.w;
-        minLS = glm::min(minLS, vLS);
-        maxLS = glm::max(maxLS, vLS);
+        minLS = glm::min(minLS, v);
+        maxLS = glm::max(maxLS, v);
     }
 
-    // Dynamic light position based on cascade size
-    float depthOffset = glm::length(maxLS - minLS) * 0.5f + LIGHT_OFFSET;
-    glm::vec3 lightPos = center - lightDirNormalized * depthOffset;
-    glm::mat4 lightView = glm::lookAt(lightPos, center, glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::vec3 extents = maxLS - minLS;
 
-    // Recompute AABB in light space (accurate)
-    minLS = glm::vec3(std::numeric_limits<float>::infinity());
-    maxLS = glm::vec3(-std::numeric_limits<float>::infinity());
-    for (const auto& v : frustumCorners)
-    {
-        glm::vec4 vLS4 = lightView * glm::vec4(v, 1.0f);
-        glm::vec3 vLS = glm::vec3(vLS4) / vLS4.w;
-        minLS = glm::min(minLS, vLS);
-        maxLS = glm::max(maxLS, vLS);
-    }
+    // 6. Snap to texel grid (safe for far cascades)
+    constexpr float SHADOW_MAP_SIZE = 2048.0f;
+    float texelSizeX = extents.x / SHADOW_MAP_SIZE;
+    float texelSizeY = extents.y / SHADOW_MAP_SIZE;
 
-    // Padding and stability
-    constexpr float Z_NEAR_PADDING = 10.0f;
-    constexpr float Z_FAR_EXTRUSION = 500.0f;
-    minLS.z -= Z_NEAR_PADDING;
-    maxLS.z += Z_FAR_EXTRUSION;
+    minLS.x = floor(minLS.x / texelSizeX) * texelSizeX;
+    minLS.y = floor(minLS.y / texelSizeY) * texelSizeY;
+    maxLS.x = ceil(maxLS.x / texelSizeX) * texelSizeX;
+    maxLS.y = ceil(maxLS.y / texelSizeY) * texelSizeY;
 
-    float width = std::max(maxLS.x - minLS.x, 1e-3f);
-    float height = std::max(maxLS.y - minLS.y, 1e-3f);
+    // 7. Add a small padding
+    float pad = 0.05f * glm::max(extents.x, extents.y);
+    minLS.x -= pad; maxLS.x += pad;
+    minLS.y -= pad; maxLS.y += pad;
 
-    // Texel snapping
-    const float SHADOW_MAP_RESOLUTION = 2048.0f;
-    float worldUnitsPerTexel = std::max(width, height) / SHADOW_MAP_RESOLUTION;
-    worldUnitsPerTexel = std::max(worldUnitsPerTexel, 1e-6f);
+    // 8. Compute light Z range dynamically
+    float zNear = minLS.z;
+    float zFar = maxLS.z;
 
-    minLS.x = std::floor(minLS.x / worldUnitsPerTexel) * worldUnitsPerTexel;
-    minLS.y = std::floor(minLS.y / worldUnitsPerTexel) * worldUnitsPerTexel;
-    maxLS.x = std::ceil(maxLS.x / worldUnitsPerTexel) * worldUnitsPerTexel;
-    maxLS.y = std::ceil(maxLS.y / worldUnitsPerTexel) * worldUnitsPerTexel;
+    // Enforce a minimum Z range for depth precision
+    float minZRange = 50.0f;
+    if (zFar - zNear < minZRange)
+        zFar = zNear + minZRange;
 
-    minLS.z = std::min(minLS.z, 0.0f);
+    // 9. Recompute light position based on Z range
+    glm::vec3 centerLS = (minLS + maxLS) * 0.5f;
+    glm::vec3 lightPos = center - lightDirNormalized * ((zFar - zNear) * 0.5f + 1.0f);
+    glm::mat4 lightView = glm::lookAt(lightPos, center, up);
 
-    glm::mat4 lightProj = glm::ortho(minLS.x, maxLS.x, minLS.y, maxLS.y, minLS.z, maxLS.z);
-    lightProj[1][1] *= -1; // Vulkan Y-flip
+    // 10. Final orthographic projection
+    glm::mat4 lightProj = glm::ortho(minLS.x, maxLS.x, minLS.y, maxLS.y, zNear, zFar);
+    lightProj[1][1] *= -1.0f; // Vulkan Y flip
 
     return lightProj * lightView;
-}
-
-
-void ShadowCascades::updateCascades(const glm::mat4& cameraView, const glm::mat4& cameraProj, const glm::vec3& lightDir, float nearPlane, float farPlane, float lambda)
-{
-	// Updates all cascade split depths and computes their corresponding light-space matrices.
-
-	calculateSplitDepths(nearPlane, farPlane, lambda);
-	m_cascades.resize(NUM_CASCADES);
-	glm::vec3 lightDirNormalized = glm::normalize(lightDir);
-
-	float lastSplitDist = 0.0f;
-	for (uint32_t i = 0; i < NUM_CASCADES; ++i)
-	{
-		float splitDist = m_splitDepths[i];
-
-		float cascadeNear = nearPlane + lastSplitDist * (farPlane - nearPlane);
-		float cascadeFar = nearPlane + splitDist * (farPlane - nearPlane);
-
-		// Create sub-frstum projection
-		glm::mat4 cascadeProj = cameraProj;
-		cascadeProj[2][2] = (cascadeFar + cascadeNear) / (cascadeNear - cascadeFar);
-		cascadeProj[2][3] = (2.0f * cascadeFar * cascadeNear) / (cascadeNear - cascadeFar);
-
-		glm::mat4 cascadeViewProj = cascadeProj * cameraView;
-		std::vector<glm::vec3> frustumCorners = getFrustumCornersWorldSpace(cascadeViewProj);
-
-		m_cascades[i].viewProj = calculateLightMatrix(frustumCorners, lightDirNormalized);
-		m_cascades[i].nearDepth = cascadeNear;
-		m_cascades[i].farDepth = cascadeFar;
-
-		lastSplitDist = splitDist;
-	}
 }

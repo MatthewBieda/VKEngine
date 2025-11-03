@@ -15,12 +15,16 @@ public:
 	};
 
 	void updateCascades(
-		const glm::mat4& cameraView,
-		const glm::mat4& cameraProj,
+		const glm::vec3& camPos,
+		const glm::vec3& camFront,
+		const glm::vec3& camUp,
+		const glm::vec3& camRight,
+		float fov,
+		float aspect,
 		const glm::vec3& lightDir,
 		float nearPlane,
 		float farPlane,
-		float lambda = 0.95f
+		float lambda
 	);
 
 	const std::vector<CascadeData>& getCascades() const { return m_cascades; }
@@ -30,6 +34,14 @@ private:
 	std::vector<float> m_splitDepths;
 
 	void calculateSplitDepths(float near, float far, float lambda);
-	glm::mat4 calculateLightMatrix(const std::vector<glm::vec3>& frustumCorners, const glm::vec3& lightDir);
-	std::vector<glm::vec3> getFrustumCornersWorldSpace(const glm::mat4& viewProj);
+	glm::mat4 calculateLightMatrix(const std::vector<glm::vec3>& frustumCorners, const glm::vec3& lightDirNormalized);
+	std::vector<glm::vec3> getCascadeFrustumCorners(
+		const glm::vec3& camPos,
+		const glm::vec3& camFront,
+		const glm::vec3& camUp,
+		const glm::vec3& camRight,
+		float fov,
+		float aspect,
+		float nearPlane,
+		float farPlane);
 };

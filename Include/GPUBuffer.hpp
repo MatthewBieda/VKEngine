@@ -35,6 +35,11 @@ public:
 	VkDeviceSize getLightingBufferSize() const { return m_lightingBufferSize; }
 	VkDeviceSize getAlignedLightingSize() const { return m_alignedLightingSize; }
 
+	void createCascadeBuffer(VkDeviceSize cascadeBufferSize);
+	VkBuffer getCascadeBuffer() const { return m_cascadeBuffer; }
+	VkDeviceSize getCascadeBufferSize() const { return m_cascadeBufferSize; }
+	VkDeviceSize getAlignedCascadeSize() const { return m_alignedCascadeSize; }
+
 	void createVisibleIndexBuffer(size_t maxObjects);
 	VkBuffer getVisibleIndexBuffer() const { return m_visibleIndexBuffer; }
 	VkDeviceSize getVisibleIndexBufferSize() const { return m_visibleIndexBufferSize; }
@@ -42,6 +47,7 @@ public:
 
 	void updateObjectBuffer(const void* data, size_t size, uint32_t currentFrame);
 	void updateLightingBuffer(const void* data, size_t size, uint32_t currentFrame);
+	void updateCascadeBuffer(const void* data, size_t size, uint32_t currentFrame);
 	void updateVisibleIndexBuffer(const void* data, size_t size, uint32_t currentFrame);
 
 private:
@@ -73,6 +79,13 @@ private:
 	void* m_lightingBufferMapped = nullptr;
 	VkDeviceSize m_lightingBufferSize = 0;
 	VkDeviceSize m_alignedLightingSize = 0;
+
+	// Cascade data UBO
+	VkBuffer m_cascadeBuffer = VK_NULL_HANDLE;
+	VmaAllocation m_cascadeAllocation = VK_NULL_HANDLE;
+	void* m_cascadeBufferMapped = nullptr;
+	VkDeviceSize m_cascadeBufferSize = 0;
+	VkDeviceSize m_alignedCascadeSize = 0;
 
 	// Visible Instance Index SSBO
 	VkBuffer m_visibleIndexBuffer = VK_NULL_HANDLE;

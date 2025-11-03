@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -29,7 +30,7 @@ public:
 	void drawUI();
 
 	VkDescriptorSet createImGuiTextureDescriptor(VkImageView imageView, VkSampler sampler);
-	void drawShadowMapVisualization(VkDescriptorSet shadowMapDescriptorSet) const;
+	void drawShadowMapVisualization(const std::array<VkDescriptorSet, 4>& shadowMapDescriptorSets) const;
 
 	inline static bool showMetrics = VK_TRUE;
 	inline static bool enableDepthTest = VK_TRUE;

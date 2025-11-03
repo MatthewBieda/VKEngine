@@ -3,6 +3,7 @@
 #include "ImGuiOverlay.hpp"
 #include "VulkanContext.hpp"
 #include "DescriptorManager.hpp"
+#include "ShadowCascades.hpp"
 
 #include <stdexcept>
 #include <iostream>
@@ -82,7 +83,7 @@ void ImGuiOverlay::init(GLFWwindow* window, VulkanContext& context, DescriptorMa
 	info.QueueFamily = context.getGraphicsQueueFamilyIndex();
 	info.Queue = context.getGraphicsQueue();
 	info.PipelineCache = VK_NULL_HANDLE;
-	info.DescriptorPoolSize = 2; // Use backend pools instead of mine
+	info.DescriptorPoolSize = 5; // Use backend pools instead of mine
 	info.RenderPass = VK_NULL_HANDLE;
 	info.Subpass = 0;
 	info.MinImageCount = imageCount;
@@ -196,23 +197,33 @@ VkDescriptorSet ImGuiOverlay::createImGuiTextureDescriptor(VkImageView imageView
 	return descriptorSet;
 }
 
-void ImGuiOverlay::drawShadowMapVisualization(VkDescriptorSet shadowMapDescriptorSet) const
+void ImGuiOverlay::drawShadowMapVisualization(const std::array<VkDescriptorSet, 4>& shadowMapDescriptorSets) const
 {
 	if (!showShadowMap || !m_initialized)
 	{
 		return;
 	}
 
-	ImGui::Begin("Shadow Map", &showShadowMap);
+	ImGui::Begin("Shadow Maps", &showShadowMap);
 
 	// Get available content region
 	ImVec2 availSize = ImGui::GetContentRegionAvail();
 
-	// Make it square
-	float size = std::min(availSize.x, availSize.y);
+	// Calculate size for a 2x2 grid (or 4 seperate windows)
+	float size = (std::min(availSize.x, availSize.y) /2.0f) - 5.0f;
 
-	// Display shadowmap as texture
-	ImGui::Image((ImTextureID)shadowMapDescriptorSet, ImVec2(size, size));
+	for (int i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
+	{
+		// Draw each cascade texture
+		ImGui::Text("Cascade %d", i);
+		ImGui::Image((ImTextureID)shadowMapDescriptorSets[i], ImVec2(size, size));
+
+		// If on the first column, advance cursor to the right
+		if (i % 2 == 0 && i < ShadowCascades::NUM_CASCADES - 1)
+		{
+			ImGui::SameLine();
+		}
+	}
 	
 	ImGui::End();
 }
