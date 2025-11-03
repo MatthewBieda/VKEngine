@@ -76,52 +76,51 @@ int SelectCascade(float viewDepth)
     return 3;
 }
 
-float ShadowCalculation(vec4 lightSpacePos[4], float viewDepth)
+float SampleCascade(int cascadeIndex, vec4 lightSpacePos)
 {
-    int cascadeIndex = SelectCascade(viewDepth);
-    vec4 lightSpacePosition = lightSpacePos[cascadeIndex];
-
-    // Perspective Divide (convert clip space to normalized device coordinates (NDC))
-    vec3 projCoords = lightSpacePosition.xyz / lightSpacePosition.w;
-
-    // Transform to [0, 1] range (texture coordinates)
-    // Only transform X and Y to the [0, 1] range for texture sampling
-    // Z is preserved as the NDC depth value
+    vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
     projCoords = vec3(projCoords.xy * 0.5 + 0.5, projCoords.z);
 
-    // Hard check for fragments outside the light's frustum
-    if (projCoords.z > 1.0 || projCoords.z < 0.0) {
-        return 1.0;
-    }
+    // Return sentinel if outside the cascade frustum
+    if (projCoords.z > 1.0 || projCoords.z < 0.0)
+        return -1.0;
 
-    // Current fragment depth (Z-value in light space)
     float currentDepth = projCoords.z;
     float shadow = 0.0;
 
-    // Percentage Closer Filtering
-    const int kernelSize = 1; 
-    
-    // Determine the texel size of the shadow map
-    // Hardcode 2k for now
-    float texelSize = 1.0 / 2048.0; 
-    
+    const int kernelSize = 1;
+    float texelSize = 1.0 / 2048.0;
+
     for (int x = -kernelSize; x <= kernelSize; ++x)
     {
         for (int y = -kernelSize; y <= kernelSize; ++y)
         {
-            // Offset the sample point by a fraction of the texel size
             vec2 offset = vec2(float(x), float(y)) * texelSize;
-
-            // The hardware sampler compares 'currentDepth' against the depth map 
-            // and returns 1.0 (lit) or 0.0 (shadowed).
-            // The result is stored in 'shadow' without manual comparison.
             shadow += texture(shadowMaps[cascadeIndex], vec3(projCoords.xy + offset, currentDepth));
         }
     }
-    
-    // Average the results
+
     float numSamples = float((2 * kernelSize + 1) * (2 * kernelSize + 1));
     return shadow / numSamples;
+}
+
+float ShadowCalculation(vec4 lightSpacePos[4], float viewDepth)
+{
+    int cascadeIndex = SelectCascade(viewDepth);
+
+    float shadow = SampleCascade(cascadeIndex, lightSpacePos[cascadeIndex]);
+
+    // If outside current cascade, try the next one
+    if (shadow < 0.0 && cascadeIndex < 3)
+    {
+        shadow = SampleCascade(cascadeIndex + 1, lightSpacePos[cascadeIndex + 1]);
+    }
+
+    // If still outside (last cascade), treat as fully lit
+    if (shadow < 0.0)
+        shadow = 1.0;
+
+    return shadow;
 }
 
 void main() {

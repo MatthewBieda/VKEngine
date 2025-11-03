@@ -457,7 +457,7 @@ int main()
 			glm::normalize(glm::vec3(lights.dirLight.direction)), // lightDir
 			0.1f,                   // near plane
 			200.0f,                 // far plane
-			0.95f                   // lambda
+			0.80f                   // lambda
 		);
 		const std::vector<ShadowCascades::CascadeData>& cascades = shadowCascades.getCascades();
 
@@ -1156,7 +1156,7 @@ void updateLighting(LightingData& lights, float deltaTime)
 	glm::mat4 rotationMatrix = glm::rotate(
 		glm::mat4(1.0f),
 		totalAngle,
-		glm::vec3(0.0f, 0.0f, 1.0f) 
+		glm::vec3(0.0f, 0.0f, 1.0f)
 	);
 
 	glm::vec4 newDir = rotationMatrix * glm::vec4(initialDir, 0.0f);

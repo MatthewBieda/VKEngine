@@ -199,32 +199,54 @@ VkDescriptorSet ImGuiOverlay::createImGuiTextureDescriptor(VkImageView imageView
 
 void ImGuiOverlay::drawShadowMapVisualization(const std::array<VkDescriptorSet, 4>& shadowMapDescriptorSets) const
 {
+	// 1. Check if the window should be drawn
 	if (!showShadowMap || !m_initialized)
 	{
 		return;
 	}
-
 	ImGui::Begin("Shadow Maps", &showShadowMap);
 
-	// Get available content region
-	ImVec2 availSize = ImGui::GetContentRegionAvail();
+	// Get available content region width
+	float windowWidth = ImGui::GetContentRegionAvail().x;
 
-	// Calculate size for a 2x2 grid (or 4 seperate windows)
-	float size = (std::min(availSize.x, availSize.y) /2.0f) - 5.0f;
+	// Determine the number of cascades per row
+	constexpr int CASCADES_PER_ROW = 2;
+
+	// Calculate the size for each image, accounting for padding/spacing
+	// ImGui::GetStyle().ItemSpacing.x is the space added by ImGui::SameLine()
+	float padding = ImGui::GetStyle().ItemSpacing.x * (CASCADES_PER_ROW - 1);
+	float imageSize = (windowWidth - padding) / CASCADES_PER_ROW;
+
+	// Enforce a minimum size for readability
+	imageSize = glm::max(imageSize, 100.0f);
 
 	for (int i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
 	{
 		// Draw each cascade texture
-		ImGui::Text("Cascade %d", i);
-		ImGui::Image((ImTextureID)shadowMapDescriptorSets[i], ImVec2(size, size));
+		ImGui::BeginGroup(); // Group text and image together
 
-		// If on the first column, advance cursor to the right
-		if (i % 2 == 0 && i < ShadowCascades::NUM_CASCADES - 1)
+		// Use a specific color for the text to match the common debug colors
+		ImVec4 color = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+		if (i == 0) color = ImVec4(1.0f, 0.5f, 0.5f, 1.0f); // Red
+		if (i == 1) color = ImVec4(0.5f, 1.0f, 0.5f, 1.0f); // Green
+		if (i == 2) color = ImVec4(0.5f, 0.5f, 1.0f, 1.0f); // Blue
+		if (i == 3) color = ImVec4(1.0f, 1.0f, 0.5f, 1.0f); // Yellow
+
+		ImGui::TextColored(color, "Cascade %d", i);
+
+		// Use the constant calculated size for a square image
+		ImGui::Image((ImTextureID)shadowMapDescriptorSets[i], ImVec2(imageSize, imageSize));
+
+		ImGui::EndGroup();
+
+		// If not the last cascade and it's an odd index (0, 2, etc.), put the next one on the same line
+		if ((i + 1) % CASCADES_PER_ROW != 0 && i < ShadowCascades::NUM_CASCADES - 1)
 		{
 			ImGui::SameLine();
 		}
 	}
-	
+
+	// 3. End the window
 	ImGui::End();
 }
 

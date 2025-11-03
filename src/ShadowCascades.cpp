@@ -4,8 +4,6 @@
 #include <limits>
 #include <algorithm>
 #include <cmath>
-#define GLM_ENABLE_EXPERIMENTAL
-#include <gtx/string_cast.hpp>
 
 void ShadowCascades::updateCascades(
     const glm::vec3& camPos,
@@ -109,9 +107,6 @@ glm::mat4 ShadowCascades::calculateLightMatrix(
 
     // 2. Compute light view
     glm::vec3 up(0.0f, 1.0f, 0.0f);
-    if (std::abs(glm::dot(up, lightDirNormalized)) > 0.99f)
-        up = glm::vec3(1.0f, 0.0f, 0.0f);
-
     // 3. Compute temporary light view
     glm::mat4 lightViewTemp = glm::lookAt(center - lightDirNormalized * 1.0f, center, up);
 
@@ -132,29 +127,48 @@ glm::mat4 ShadowCascades::calculateLightMatrix(
 
     glm::vec3 extents = maxLS - minLS;
 
-    // 6. Snap to texel grid (safe for far cascades)
+    // 6. Calculate Texel Size
     constexpr float SHADOW_MAP_SIZE = 2048.0f;
+
+    // Save pre-snapped bounds for comparison
+    float preSnapExtentsX = extents.x;
+    float preSnapExtentsY = extents.y;
+
+    // The texel size in LIGHT SPACE UNITS (used for snapping the position)
     float texelSizeX = extents.x / SHADOW_MAP_SIZE;
     float texelSizeY = extents.y / SHADOW_MAP_SIZE;
 
-    minLS.x = floor(minLS.x / texelSizeX) * texelSizeX;
-    minLS.y = floor(minLS.y / texelSizeY) * texelSizeY;
-    maxLS.x = ceil(maxLS.x / texelSizeX) * texelSizeX;
-    maxLS.y = ceil(maxLS.y / texelSizeY) * texelSizeY;
+    // Calculate the light-space center before snapping
+    glm::vec3 centerLS_preSnap = (minLS + maxLS) * 0.5f;
+
+    // 6a. Snap the center's X/Y coordinates (CRITICAL for stability)
+    centerLS_preSnap.x = floor(centerLS_preSnap.x / texelSizeX + 0.5f) * texelSizeX;
+    centerLS_preSnap.y = floor(centerLS_preSnap.y / texelSizeY + 0.5f) * texelSizeY;
+
+    // 6b. Recalculate min/max using the snapped center and the ORIGINAL extents.
+    minLS.x = centerLS_preSnap.x - preSnapExtentsX * 0.5f;
+    maxLS.x = centerLS_preSnap.x + preSnapExtentsX * 0.5f;
+    minLS.y = centerLS_preSnap.y - preSnapExtentsY * 0.5f;
+    maxLS.y = centerLS_preSnap.y + preSnapExtentsY * 0.5f;
+
+    // 6c. Recalculate extents (for padding and debug output)
+    extents = maxLS - minLS;
 
     // 7. Add a small padding
-    float pad = 0.05f * glm::max(extents.x, extents.y);
-    minLS.x -= pad; maxLS.x += pad;
-    minLS.y -= pad; maxLS.y += pad;
+    // float pad = 0.05f * glm::max(extents.x, extents.y);
+    // minLS.x -= pad; maxLS.x += pad;
+    // minLS.y -= pad; maxLS.y += pad;
 
     // 8. Compute light Z range dynamically
     float zNear = minLS.z;
     float zFar = maxLS.z;
 
-    // Enforce a minimum Z range for depth precision
-    float minZRange = 50.0f;
+    //Enforce a minimum Z range for depth precision
+    float minZRange = 100.0f;
     if (zFar - zNear < minZRange)
+    {
         zFar = zNear + minZRange;
+    }
 
     // 9. Recompute light position based on Z range
     glm::vec3 centerLS = (minLS + maxLS) * 0.5f;
