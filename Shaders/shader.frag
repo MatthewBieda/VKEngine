@@ -19,6 +19,7 @@ layout(push_constant) uniform PushConstants
     int normalTextureIndex;
     int enableNormalMaps;
     float reflectionStrength;
+    int showCascadeColors;
 } pc;
 
 layout(set = 0, binding = 1) uniform sampler2D tex[];
@@ -187,7 +188,7 @@ void main() {
     // Cacade Visualization Demo
     // Visualize the cascade *actually used for sampling* and the resulting shadow factor.
     // This shows cascade color (R/G/B/Y) modulated by the sampled shadow (1.0 = lit, 0.0 = shadowed).
-    /*
+    if (pc.showCascadeColors != 0)
     {
         float viewDepth = abs(viewPos.z);
         int cascadeIndex = SelectCascade(viewDepth);
@@ -215,7 +216,6 @@ void main() {
         outColor = vec4(cascadeColor * shadowFactor, 1.0);
         return;
     }
-    */
 
     float shadowFactor = ShadowCalculation(fragLightSpacePos, viewDepth);
 

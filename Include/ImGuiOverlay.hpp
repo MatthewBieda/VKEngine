@@ -47,6 +47,7 @@ public:
 	inline static bool showSubmeshAABB = VK_FALSE;
 	inline static bool enableNormalMaps = VK_TRUE;
 	inline static bool showShadowMap = VK_TRUE;
+	inline static bool showCascadeColors = VK_FALSE;
 
 private:
 	static void checkVkResult(VkResult err);

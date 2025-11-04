@@ -60,7 +60,7 @@ struct PushConstants
 	uint32_t normalTextureIndex = 0;
 	uint32_t enableNormalMaps = 1;
 	float reflectionStrength = 0.0f;
-	uint32_t padding1 = 0;
+	uint32_t showCascadeColors = 0;
 	uint32_t padding2 = 0;
 } pc;
 
@@ -693,6 +693,7 @@ int main()
 		pc.enableDirectionalLight = imgui.enableDirectionalLight ? 1 : 0;
 		pc.enablePointLights = imgui.enablePointLights ? 1 : 0;
 		pc.enableNormalMaps = imgui.enableNormalMaps ? 1 : 0;
+		pc.showCascadeColors = imgui.showCascadeColors ? 1 : 0;
 
 		// Loop over meshes
 		for (uint32_t matIdx = 0; matIdx < drawLists.opaque.size(); ++matIdx)
@@ -853,10 +854,7 @@ int main()
 
 		// 5. UI pass
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &imguiPassLabel);
-
-		const std::vector<ShadowCascades::CascadeData>& imguiCascades = shadowCascades.getCascades();
-		imgui.drawShadowMapVisualization(shadowMapImGuiDescriptors, imguiCascades);
-
+		imgui.drawShadowMapVisualization(shadowMapImGuiDescriptors, cascades);
 		imgui.render();
 
 		imguiColorAttachment.imageView = swapchain.getSwapchainImageView(imageIndex);

@@ -172,6 +172,7 @@ void ImGuiOverlay::drawUI()
 		ImGui::Checkbox("Show Mesh AABB (Red)", &showMeshAABB);
 		ImGui::Checkbox("Show Submesh AABB (Green)", &showSubmeshAABB);
 		ImGui::Checkbox("Freeze Camera Frustum", &freezeFrustum);
+		ImGui::Checkbox("Show Cascade Colors", &showCascadeColors);
 	}
 
 	if (ImGui::CollapsingHeader("Render Targets"))
