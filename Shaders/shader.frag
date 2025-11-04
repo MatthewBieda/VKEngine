@@ -78,16 +78,23 @@ int SelectCascade(float viewDepth)
 
 float SampleCascade(int cascadeIndex, vec4 lightSpacePos)
 {
+    // Perspective Divide (convert clip space to normalized device coordinates (NDC))
     vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
+
+    // Transform to [0, 1] range (texture coordinates)
+    // Only transform X and Y to the [0, 1] range for texture sampling
+    // Z is preserved as the NDC depth value
     projCoords = vec3(projCoords.xy * 0.5 + 0.5, projCoords.z);
 
     // Return sentinel if outside the cascade frustum
     if (projCoords.z > 1.0 || projCoords.z < 0.0)
         return -1.0;
 
+    // Current fragment depth (Z-value in light space)
     float currentDepth = projCoords.z;
     float shadow = 0.0;
 
+    // Apply PCF
     const int kernelSize = 1;
     float texelSize = 1.0 / 2048.0;
 
@@ -95,11 +102,17 @@ float SampleCascade(int cascadeIndex, vec4 lightSpacePos)
     {
         for (int y = -kernelSize; y <= kernelSize; ++y)
         {
+            // Offset the sample point by a fraction of the texel size
             vec2 offset = vec2(float(x), float(y)) * texelSize;
+
+            // The hardware sampler compares 'currentDepth' against the depth map 
+            // and returns 1.0 (lit) or 0.0 (shadowed).
+            // The result is stored in 'shadow' without manual comparison.
             shadow += texture(shadowMaps[cascadeIndex], vec3(projCoords.xy + offset, currentDepth));
         }
     }
 
+    // Average the results
     float numSamples = float((2 * kernelSize + 1) * (2 * kernelSize + 1));
     return shadow / numSamples;
 }
@@ -170,6 +183,39 @@ void main() {
     // Calculate the view-space depth for cascade selection
     vec4 viewPos = pc.view * vec4(fragPos, 1.0);
     float viewDepth = abs(viewPos.z);
+
+    // Cacade Visualization Demo
+    // Visualize the cascade *actually used for sampling* and the resulting shadow factor.
+    // This shows cascade color (R/G/B/Y) modulated by the sampled shadow (1.0 = lit, 0.0 = shadowed).
+    /*
+    {
+        float viewDepth = abs(viewPos.z);
+        int cascadeIndex = SelectCascade(viewDepth);
+
+        vec3 cascadeColor;
+        if (cascadeIndex == 0)
+        {
+            cascadeColor = vec3(1.0, 0.0, 0.0);
+        }
+        else if (cascadeIndex == 1)
+        {
+            cascadeColor = vec3(0.0, 1.0, 0.0);
+        }
+        else if (cascadeIndex == 2)
+        {
+            cascadeColor = vec3(0.0, 0.0, 1.0);
+        }
+        else
+        {
+            cascadeColor = vec3(1.0, 1.0, 0.0);
+        }
+
+        float shadowFactor = ShadowCalculation(fragLightSpacePos, viewDepth);
+
+        outColor = vec4(cascadeColor * shadowFactor, 1.0);
+        return;
+    }
+    */
 
     float shadowFactor = ShadowCalculation(fragLightSpacePos, viewDepth);
 

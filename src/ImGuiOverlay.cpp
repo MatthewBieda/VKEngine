@@ -3,7 +3,6 @@
 #include "ImGuiOverlay.hpp"
 #include "VulkanContext.hpp"
 #include "DescriptorManager.hpp"
-#include "ShadowCascades.hpp"
 
 #include <stdexcept>
 #include <iostream>
@@ -197,7 +196,9 @@ VkDescriptorSet ImGuiOverlay::createImGuiTextureDescriptor(VkImageView imageView
 	return descriptorSet;
 }
 
-void ImGuiOverlay::drawShadowMapVisualization(const std::array<VkDescriptorSet, 4>& shadowMapDescriptorSets) const
+void ImGuiOverlay::drawShadowMapVisualization(
+	const std::array<VkDescriptorSet, 4>& shadowMapDescriptorSets,
+	const std::vector<ShadowCascades::CascadeData>& cascades) const
 {
 	// 1. Check if the window should be drawn
 	if (!showShadowMap || !m_initialized)
@@ -205,6 +206,8 @@ void ImGuiOverlay::drawShadowMapVisualization(const std::array<VkDescriptorSet, 
 		return;
 	}
 	ImGui::Begin("Shadow Maps", &showShadowMap);
+
+	constexpr float SHADOW_MAP_SIZE = 2048.0f;
 
 	// Get available content region width
 	float windowWidth = ImGui::GetContentRegionAvail().x;
@@ -236,6 +239,14 @@ void ImGuiOverlay::drawShadowMapVisualization(const std::array<VkDescriptorSet, 
 
 		// Use the constant calculated size for a square image
 		ImGui::Image((ImTextureID)shadowMapDescriptorSets[i], ImVec2(imageSize, imageSize));
+
+		// Calculate range and resolution per meter
+		float range = cascades[i].farDepth - cascades[i].nearDepth;
+		float pixelsPerMeter = SHADOW_MAP_SIZE / range;
+
+		ImGui::Text("Range: %.1fm - %.1fm", cascades[i].nearDepth, cascades[i].farDepth);
+		ImGui::Text("Depth: %.1fm", range);
+		ImGui::TextColored(color, "~%.0f px/m", pixelsPerMeter);
 
 		ImGui::EndGroup();
 

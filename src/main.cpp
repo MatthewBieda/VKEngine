@@ -853,7 +853,10 @@ int main()
 
 		// 5. UI pass
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &imguiPassLabel);
-		imgui.drawShadowMapVisualization(shadowMapImGuiDescriptors);
+
+		const std::vector<ShadowCascades::CascadeData>& imguiCascades = shadowCascades.getCascades();
+		imgui.drawShadowMapVisualization(shadowMapImGuiDescriptors, imguiCascades);
+
 		imgui.render();
 
 		imguiColorAttachment.imageView = swapchain.getSwapchainImageView(imageIndex);
@@ -1145,6 +1148,8 @@ void setupLighting(GPUBuffer& buffer, LightingData& lights)
 
 void updateLighting(LightingData& lights, float deltaTime)
 {
+	// Keep static for now
+	/*
 	// Rotate light 
 	const float rotationSpeed = 0.02f;
 
@@ -1161,6 +1166,7 @@ void updateLighting(LightingData& lights, float deltaTime)
 
 	glm::vec4 newDir = rotationMatrix * glm::vec4(initialDir, 0.0f);
 	lights.dirLight.direction = glm::normalize(newDir);
+	*/
 }
 
 void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime)

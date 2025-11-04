@@ -1,5 +1,7 @@
 #pragma once
 #include <array>
+#include <vector>
+#include "ShadowCascades.hpp"
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -30,7 +32,10 @@ public:
 	void drawUI();
 
 	VkDescriptorSet createImGuiTextureDescriptor(VkImageView imageView, VkSampler sampler);
-	void drawShadowMapVisualization(const std::array<VkDescriptorSet, 4>& shadowMapDescriptorSets) const;
+
+	void drawShadowMapVisualization(
+		const std::array<VkDescriptorSet, 4>& shadowMapDescriptorSets,
+		const std::vector<ShadowCascades::CascadeData>& cascades) const;
 
 	inline static bool showMetrics = VK_TRUE;
 	inline static bool enableDepthTest = VK_TRUE;
