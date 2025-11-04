@@ -180,6 +180,12 @@ void ImGuiOverlay::drawUI()
 		ImGui::Checkbox("Show Shadow Map", &showShadowMap);
 	}
 
+	if (ImGui::CollapsingHeader("Shadows"))
+	{
+		ImGui::SliderFloat("Lambda", &cascadeLambda, 0.0f, 1.0f, "%.2f");
+		ImGui::Text("0.0 = Uniform, 1.0 = Logarithmic");
+	}
+
 	ImGui::Separator();
 	ImGui::Text("Metrics");
 	ImGui::Checkbox("Show Metrics", &showMetrics);

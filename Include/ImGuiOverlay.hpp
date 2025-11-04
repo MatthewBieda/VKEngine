@@ -48,6 +48,7 @@ public:
 	inline static bool enableNormalMaps = VK_TRUE;
 	inline static bool showShadowMap = VK_TRUE;
 	inline static bool showCascadeColors = VK_FALSE;
+	inline static float cascadeLambda = 0.80f;
 
 private:
 	static void checkVkResult(VkResult err);

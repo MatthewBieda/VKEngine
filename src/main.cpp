@@ -457,7 +457,7 @@ int main()
 			glm::normalize(glm::vec3(lights.dirLight.direction)), // lightDir
 			0.1f,                   // near plane
 			200.0f,                 // far plane
-			0.80f                   // lambda
+			imgui.cascadeLambda     // Toggle lambda in ImGui (0.80f default)
 		);
 		const std::vector<ShadowCascades::CascadeData>& cascades = shadowCascades.getCascades();
 
