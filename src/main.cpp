@@ -196,7 +196,8 @@ enum class MeshType
 {
 	GroundPlane,
 	Cube,
-	BrickWall
+	BrickWall,
+	SnakeStatue
 };
 
 void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData);
@@ -238,7 +239,7 @@ int main()
 	image.createDepthImage(swapchain.getExtent().width, swapchain.getExtent().height);
 	image.createMSAAColorImage(swapchain.getExtent().width, swapchain.getExtent().height, swapchain.getFormat());
 
-	const uint32_t SHADOW_MAP_RES = 2048;
+	const uint32_t SHADOW_MAP_RES = 4096;
 	for (uint32_t i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
 	{
 		image.createShadowMap(SHADOW_MAP_RES, SHADOW_MAP_RES);
@@ -263,6 +264,7 @@ int main()
 	uint32_t groundPlane = loadModel("../Models/GroundPlane/groundPlane.obj", image);
 	uint32_t cube = loadModel("../Models/Cube/cube.obj", image);
 	uint32_t brickWall = loadModel("../Models/BrickWall/BrickWall.obj", image);
+	uint32_t snakeStatue = loadModel("../Models/SnakeStatue/SnakeStatue.obj", image);
 
 	// Create buffers and populate scene
 	GPUBuffer buffer(context, commands, allVertices, allIndices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
@@ -1107,28 +1109,50 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 {
 	glm::vec3 pos{};
 	glm::mat4 model{};
-	uint32_t meshIndex{};
+	uint32_t groundPlaneIndex{};
+	uint32_t SnakeStatueIndex{};
 
-	// Ground Plane
-	pos = { 0.0f, 0.0f, 0.0f };
-	model = glm::translate(glm::mat4(1.0f), pos);
-	model = glm::scale(model, glm::vec3(5.0f));
-	meshIndex = static_cast<uint32_t>(MeshType::GroundPlane);
-	objectData.push_back({ model, meshIndex });
+	// Snake Statues - instanced grid on planes
+	groundPlaneIndex = static_cast<uint32_t>(MeshType::GroundPlane);
+	SnakeStatueIndex = static_cast<uint32_t>(MeshType::SnakeStatue);
 
-	// Cube
-	pos = { 0.0f, 3.0f, 0.0f };
-	model = glm::translate(glm::mat4(1.0f), pos);
-	model = glm::scale(model, glm::vec3(3.0f));
-	meshIndex = static_cast<uint32_t>(MeshType::Cube);
-	objectData.push_back({ model, meshIndex });
+	const int gridCount = 5;     // 5x5 = 49 statues
+	const float spacing = 25.0f;  // distance between each statue
 
-	// Cube 2: Medium Distance (Will start to look blocky)
-	pos = { 40.0f, 3.0f, -10.0f };
-	model = glm::translate(glm::mat4(1.0f), pos);
-	model = glm::scale(model, glm::vec3(1.5f));
-	meshIndex = static_cast<uint32_t>(MeshType::Cube);
-	objectData.push_back({ model, meshIndex });
+	for (int x = 0; x < gridCount; ++x)
+	{
+		for (int z = 0; z < gridCount; ++z)
+		{
+			glm::vec3 offset = {
+				(x - gridCount / 2) * spacing,
+				0.0f,
+				(z - gridCount / 2) * spacing
+			};
+
+			model = glm::translate(glm::mat4(1.0f), offset);
+
+			// Random rotation
+			float randomRot = glm::radians(static_cast<float>(rand() % 360));
+			model = glm::rotate(model, randomRot, glm::vec3(0.0f, 1.0f, 0.0f));
+
+			objectData.push_back({ model, SnakeStatueIndex });
+		}
+	}
+
+	for (int x = 0; x < gridCount; ++x)
+	{
+		for (int z = 0; z < gridCount; ++z)
+		{
+			glm::vec3 offset = {
+				(x - gridCount / 2) * spacing,
+				0.0f,
+				(z - gridCount / 2) * spacing
+			};
+
+			model = glm::translate(glm::mat4(1.0f), offset);
+			objectData.push_back({ model, groundPlaneIndex });
+		}
+	}
 
 	buffer.createObjectBuffer(objectData.size());
 	buffer.createVisibleIndexBuffer(objectData.size());

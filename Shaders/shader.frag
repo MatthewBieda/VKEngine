@@ -97,7 +97,7 @@ float SampleCascade(int cascadeIndex, vec4 lightSpacePos)
 
     // Apply PCF
     const int kernelSize = 1;
-    float texelSize = 1.0 / 2048.0;
+    float texelSize = 1.0 / 4096.0;
 
     for (int x = -kernelSize; x <= kernelSize; ++x)
     {

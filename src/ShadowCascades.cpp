@@ -128,7 +128,7 @@ glm::mat4 ShadowCascades::calculateLightMatrix(
     glm::vec3 extents = maxLS - minLS;
 
     // 6. Calculate Texel Size
-    constexpr float SHADOW_MAP_SIZE = 2048.0f;
+    constexpr float SHADOW_MAP_SIZE = 4096.0f;
 
     // Save pre-snapped bounds for comparison
     float preSnapExtentsX = extents.x;

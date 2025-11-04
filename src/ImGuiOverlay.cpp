@@ -214,7 +214,7 @@ void ImGuiOverlay::drawShadowMapVisualization(
 	}
 	ImGui::Begin("Shadow Maps", &showShadowMap);
 
-	constexpr float SHADOW_MAP_SIZE = 2048.0f;
+	constexpr float SHADOW_MAP_SIZE = 4096.0f;
 
 	// Get available content region width
 	float windowWidth = ImGui::GetContentRegionAvail().x;
