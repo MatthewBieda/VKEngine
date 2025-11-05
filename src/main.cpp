@@ -1116,7 +1116,7 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 	groundPlaneIndex = static_cast<uint32_t>(MeshType::GroundPlane);
 	SnakeStatueIndex = static_cast<uint32_t>(MeshType::SnakeStatue);
 
-	const int gridCount = 5;     // 5x5 = 49 statues
+	const int gridCount = 5;     // 5x5 = 25 statues
 	const float spacing = 25.0f;  // distance between each statue
 
 	for (int x = 0; x < gridCount; ++x)

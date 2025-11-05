@@ -86,13 +86,6 @@ std::vector<glm::vec3> ShadowCascades::getCascadeFrustumCorners(
     corners[6] = fc - camUp * farHalfHeight - camRight * farHalfWidth;   // far bottom-left
     corners[7] = fc - camUp * farHalfHeight + camRight * farHalfWidth;   // far bottom-right
 
-    glm::vec3 minC = corners[0], maxC = corners[0];
-    for (int i = 1; i < 8; ++i) {
-        minC = glm::min(minC, corners[i]);
-        maxC = glm::max(maxC, corners[i]);
-    }
-    glm::vec3 size = maxC - minC;
-
     return corners;
 }
 
@@ -102,11 +95,14 @@ glm::mat4 ShadowCascades::calculateLightMatrix(
 {
     // 1. Compute frustum center
     glm::vec3 center(0.0f);
-    for (const auto& v : frustumCorners) center += v;
-    center /= static_cast<float>(frustumCorners.size());
+    for (const auto& v: frustumCorners) center += v;
+    {
+        center /= static_cast<float>(frustumCorners.size());
+    }
 
     // 2. Compute light view
     glm::vec3 up(0.0f, 1.0f, 0.0f);
+
     // 3. Compute temporary light view
     glm::mat4 lightViewTemp = glm::lookAt(center - lightDirNormalized * 1.0f, center, up);
 
@@ -121,7 +117,7 @@ glm::mat4 ShadowCascades::calculateLightMatrix(
     // 5. Compute bounds in light space
     glm::vec3 minLS(std::numeric_limits<float>::max());
     glm::vec3 maxLS(std::numeric_limits<float>::lowest());
-    for (const auto& v : cornersLS)
+    for (const auto& v: cornersLS)
     {
         minLS = glm::min(minLS, v);
         maxLS = glm::max(maxLS, v);
@@ -129,41 +125,31 @@ glm::mat4 ShadowCascades::calculateLightMatrix(
 
     glm::vec3 extents = maxLS - minLS;
 
-    // 6. Calculate Texel Size
+    // 6. Quantize extents for stability
     constexpr float SHADOW_MAP_SIZE = 4096.0f;
+    extents.x = std::ceil(extents.x * 32.0f) / 32.0f;
+    extents.y = std::ceil(extents.y * 32.0f) / 32.0f;
 
-    // Save pre-snapped bounds for comparison
-    float preSnapExtentsX = extents.x;
-    float preSnapExtentsY = extents.y;
-
-    // The texel size in LIGHT SPACE UNITS (used for snapping the position)
+    // 7. Texel size and center snapping
     float texelSizeX = extents.x / SHADOW_MAP_SIZE;
     float texelSizeY = extents.y / SHADOW_MAP_SIZE;
 
-    // Calculate the light-space center before snapping
-    glm::vec3 centerLS_preSnap = (minLS + maxLS) * 0.5f;
+    glm::vec3 centerLS  = (minLS + maxLS) * 0.5f;
+    centerLS.x = floor(centerLS.x / texelSizeX + 0.5f) * texelSizeX;
+    centerLS.y = floor(centerLS.y / texelSizeY + 0.5f) * texelSizeY;
 
-    // 6a. Snap the center's X/Y coordinates (CRITICAL for stability)
-    centerLS_preSnap.x = floor(centerLS_preSnap.x / texelSizeX + 0.5f) * texelSizeX;
-    centerLS_preSnap.y = floor(centerLS_preSnap.y / texelSizeY + 0.5f) * texelSizeY;
+    minLS.x = centerLS.x - extents.x * 0.5f;
+    maxLS.x = centerLS.x + extents.x * 0.5f;
+    minLS.y = centerLS.y - extents.y * 0.5f;
+    maxLS.y = centerLS.y + extents.y * 0.5f;
 
-    // 6b. Recalculate min/max using the snapped center and the ORIGINAL extents.
-    minLS.x = centerLS_preSnap.x - preSnapExtentsX * 0.5f;
-    maxLS.x = centerLS_preSnap.x + preSnapExtentsX * 0.5f;
-    minLS.y = centerLS_preSnap.y - preSnapExtentsY * 0.5f;
-    maxLS.y = centerLS_preSnap.y + preSnapExtentsY * 0.5f;
-
-    // 6c. Recalculate extents (for padding and debug output)
-    extents = maxLS - minLS;
-
-    // 8. Grab Z bounds and pad far to prevent clipping
+    // 8. Grab Z bounds and pad far to prevent clipping in the last cascade
     float zNear = minLS.z;
     float zFar = maxLS.z;
     zFar += 100.0f;
 
     // 9. Recompute light position based on Z range
-    glm::vec3 centerLS = (minLS + maxLS) * 0.5f;
-    glm::vec3 lightPos = center - lightDirNormalized * ((zFar - zNear) * 0.5f + 1.0f);
+    glm::vec3 lightPos = center - lightDirNormalized * ((zFar - zNear) * 0.5f + 10.0f); // Offset prevents clipping in the near plane
     glm::mat4 lightView = glm::lookAt(lightPos, center, up);
 
     // 10. Final orthographic projection
