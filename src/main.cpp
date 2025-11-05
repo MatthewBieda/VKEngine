@@ -297,11 +297,12 @@ int main()
 	}
 
 	//Debug labels
+	VkDebugUtilsLabelEXT shadowPassLabel = makeLabel("Shadow Pass", 0.0f, 1.0f, 1.0f);
 	VkDebugUtilsLabelEXT opaquePassLabel = makeLabel("Opaque Pass", 0.0f, 1.0f, 0.0f);
 	VkDebugUtilsLabelEXT skyboxPassLabel = makeLabel("Skybox Pass", 0.3f, 0.7f, 1.0f);
 	VkDebugUtilsLabelEXT transparentPassLabel = makeLabel("Transparent Pass", 1.0f, 0.5f, 0.0f);
-	VkDebugUtilsLabelEXT imguiPassLabel = makeLabel("ImGui Pass", 1.0f, 0.0f, 1.0f);
 	VkDebugUtilsLabelEXT debugPassLabel = makeLabel("Debug Wireframe Pass", 1.0f, 1.0f, 0.0f);
+	VkDebugUtilsLabelEXT imguiPassLabel = makeLabel("ImGui Pass", 1.0f, 0.0f, 1.0f);
 
 	// Pre-render loop struct initialization
 	VkCommandBufferBeginInfo beginInfo{};
@@ -516,7 +517,8 @@ int main()
 		VkCommandBuffer cmd = commands.getCommandBuffer(currentFrame);
 		vkBeginCommandBuffer(cmd, &beginInfo);
 
-		// Shadowmap render pass
+		// -- SHADOW RENDER PASS --
+		vkCmdBeginDebugUtilsLabelEXT(cmd, &shadowPassLabel);
 		for (uint32_t i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
 		{
 			const auto& cascade = cascades[i];
@@ -630,6 +632,10 @@ int main()
 			shadowBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			vkCmdPipelineBarrier2(cmd, &shadowDepInfo);
 		}
+		vkCmdEndDebugUtilsLabelEXT(cmd);
+
+		// -- OPAQUE RENDER PASS --
+		vkCmdBeginDebugUtilsLabelEXT(cmd, &opaquePassLabel);
 
 		// Transition swapchain to attachment
 		preRenderBarrier.image = swapchain.getSwapchainImage(imageIndex);
@@ -646,7 +652,6 @@ int main()
 		renderingInfo.renderArea.offset = { 0, 0 };
 		renderingInfo.renderArea.extent = swapchain.getExtent();
 
-		// Main render pass
 		vkCmdBeginRendering(cmd, &renderingInfo);
 
 		// Declare dynamic states
@@ -664,8 +669,6 @@ int main()
 
 		VkPolygonMode polygonMode = imgui.enableWireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
 
-		// 1. Opaque Pass (depth writes ON)
-		vkCmdBeginDebugUtilsLabelEXT(cmd, &opaquePassLabel);
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scenePipeline.getPipeline());
 		scenePipeline.setViewport(cmd, viewport);
 		scenePipeline.setScissor(cmd, scissor);
@@ -728,7 +731,7 @@ int main()
 		}
 		vkCmdEndDebugUtilsLabelEXT(cmd);
 
-		// 2. Skybox pass (Depth wrties OFF, test ON)
+		// -- SKYBOX RENDER PASS --
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &skyboxPassLabel);
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeline.getPipeline());
 		skyboxPipeline.setViewport(cmd, viewport);
@@ -746,7 +749,7 @@ int main()
 		vkCmdDraw(cmd, 36, 1, 0, 0);
 		vkCmdEndDebugUtilsLabelEXT(cmd);
 
-		// 3. Transparent pass (Depth writes OFF, sorted back to front)
+		// -- TRANSPARENCY RENDER PASS --
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &transparentPassLabel);
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, transparentPipeline.getPipeline());
 
@@ -819,7 +822,8 @@ int main()
 		}
 		vkCmdEndDebugUtilsLabelEXT(cmd);
 
-		// 4. Debug wireframe pass
+		// -- DEBUG RENDER PASS --
+		vkCmdBeginDebugUtilsLabelEXT(cmd, &debugPassLabel);
 		if (imgui.showMeshAABB || imgui.showSubmeshAABB)
 		{
 			std::vector<DebugVertex> debugVertices;
@@ -833,7 +837,6 @@ int main()
 				buffer.createOrResizeDebugVertexBuffer(debugVertices.size());
 				memcpy(buffer.getDebugBufferMapped(), debugVertices.data(), debugVertices.size() * sizeof(DebugVertex));
 
-				vkCmdBeginDebugUtilsLabelEXT(cmd, &debugPassLabel);
 				vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, debugPipeline.getPipeline());
 				debugPipeline.setViewport(cmd, viewport);
 				debugPipeline.setScissor(cmd, scissor);
@@ -849,12 +852,12 @@ int main()
 					VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(debugPC), &debugPC);
 
 				vkCmdDraw(cmd, static_cast<uint32_t>(debugVertices.size()), 1, 0, 0);
-				vkCmdEndDebugUtilsLabelEXT(cmd);
 			}
 		}
 		vkCmdEndRendering(cmd);
+		vkCmdEndDebugUtilsLabelEXT(cmd);
 
-		// 5. UI pass
+		// -- UI RENDER PASS --
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &imguiPassLabel);
 		imgui.drawShadowMapVisualization(shadowMapImGuiDescriptors, cascades);
 		imgui.render();
@@ -866,8 +869,8 @@ int main()
 		vkCmdBeginRendering(cmd, &imguiRenderingInfo);
 
 		imgui.recordCommands(cmd);
-		vkCmdEndDebugUtilsLabelEXT(cmd);
 		vkCmdEndRendering(cmd);
+		vkCmdEndDebugUtilsLabelEXT(cmd);
 
 		// Transition to present
 		postRenderBarrier.image = swapchain.getSwapchainImage(imageIndex);
@@ -1171,7 +1174,7 @@ void setupLighting(GPUBuffer& buffer, LightingData& lights)
 void updateLighting(LightingData& lights, float deltaTime)
 {
 	// Speed of rotation in radians per second
-	const float rotationSpeed = glm::radians(10.0f); // 10 degrees per second
+	constexpr float rotationSpeed = glm::radians(10.0f); // 10 degrees per second
 
 	// Accumulate total time for continuous rotation
 	static float totalTime = 0.0f;

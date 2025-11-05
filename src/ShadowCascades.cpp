@@ -100,13 +100,11 @@ glm::mat4 ShadowCascades::calculateLightMatrix(
         center /= static_cast<float>(frustumCorners.size());
     }
 
-    // 2. Compute light view
+    // 2. Compute temporary light view
     glm::vec3 up(0.0f, 1.0f, 0.0f);
-
-    // 3. Compute temporary light view
     glm::mat4 lightViewTemp = glm::lookAt(center - lightDirNormalized * 1.0f, center, up);
 
-    // 4. Transform frustum corners into light space
+    // 3. Transform frustum corners into light space
     std::vector<glm::vec3> cornersLS;
     cornersLS.reserve(frustumCorners.size());
     for (const auto& v : frustumCorners)
@@ -114,7 +112,7 @@ glm::mat4 ShadowCascades::calculateLightMatrix(
         cornersLS.push_back(glm::vec3(lightViewTemp * glm::vec4(v, 1.0f)));
     }
 
-    // 5. Compute bounds in light space
+    // 4. Compute bounds in light space
     glm::vec3 minLS(std::numeric_limits<float>::max());
     glm::vec3 maxLS(std::numeric_limits<float>::lowest());
     for (const auto& v: cornersLS)
@@ -125,12 +123,12 @@ glm::mat4 ShadowCascades::calculateLightMatrix(
 
     glm::vec3 extents = maxLS - minLS;
 
-    // 6. Quantize extents for stability
+    // 5. Quantize extents for stability
     constexpr float SHADOW_MAP_SIZE = 4096.0f;
     extents.x = std::ceil(extents.x * 32.0f) / 32.0f;
     extents.y = std::ceil(extents.y * 32.0f) / 32.0f;
 
-    // 7. Texel size and center snapping
+    // 6. Texel size and center snapping
     float texelSizeX = extents.x / SHADOW_MAP_SIZE;
     float texelSizeY = extents.y / SHADOW_MAP_SIZE;
 
@@ -143,16 +141,16 @@ glm::mat4 ShadowCascades::calculateLightMatrix(
     minLS.y = centerLS.y - extents.y * 0.5f;
     maxLS.y = centerLS.y + extents.y * 0.5f;
 
-    // 8. Grab Z bounds and pad far to prevent clipping in the last cascade
+    // 7. Grab Z bounds and pad far to prevent clipping in the last cascade
     float zNear = minLS.z;
     float zFar = maxLS.z;
     zFar += 100.0f;
 
-    // 9. Recompute light position based on Z range
+    // 8. Recompute light position based on Z range
     glm::vec3 lightPos = center - lightDirNormalized * ((zFar - zNear) * 0.5f + 10.0f); // Offset prevents clipping in the near plane
     glm::mat4 lightView = glm::lookAt(lightPos, center, up);
 
-    // 10. Final orthographic projection
+    // 9. Final orthographic projection
     glm::mat4 lightProj = glm::ortho(minLS.x, maxLS.x, minLS.y, maxLS.y, zNear, zFar);
     lightProj[1][1] *= -1.0f; // Vulkan Y flip
 
