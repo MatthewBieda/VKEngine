@@ -114,7 +114,9 @@ glm::mat4 ShadowCascades::calculateLightMatrix(
     std::vector<glm::vec3> cornersLS;
     cornersLS.reserve(frustumCorners.size());
     for (const auto& v : frustumCorners)
+    {
         cornersLS.push_back(glm::vec3(lightViewTemp * glm::vec4(v, 1.0f)));
+    }
 
     // 5. Compute bounds in light space
     glm::vec3 minLS(std::numeric_limits<float>::max());
@@ -154,21 +156,10 @@ glm::mat4 ShadowCascades::calculateLightMatrix(
     // 6c. Recalculate extents (for padding and debug output)
     extents = maxLS - minLS;
 
-    // 7. Add a small padding
-    // float pad = 0.05f * glm::max(extents.x, extents.y);
-    // minLS.x -= pad; maxLS.x += pad;
-    // minLS.y -= pad; maxLS.y += pad;
-
-    // 8. Compute light Z range dynamically
+    // 8. Grab Z bounds and pad far to prevent clipping
     float zNear = minLS.z;
     float zFar = maxLS.z;
-
-    //Enforce a minimum Z range for depth precision
-    float minZRange = 100.0f;
-    if (zFar - zNear < minZRange)
-    {
-        zFar = zNear + minZRange;
-    }
+    zFar += 100.0f;
 
     // 9. Recompute light position based on Z range
     glm::vec3 centerLS = (minLS + maxLS) * 0.5f;

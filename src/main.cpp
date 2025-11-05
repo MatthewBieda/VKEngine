@@ -1170,25 +1170,39 @@ void setupLighting(GPUBuffer& buffer, LightingData& lights)
 
 void updateLighting(LightingData& lights, float deltaTime)
 {
-	// Keep static for now
-	/*
-	// Rotate light 
-	const float rotationSpeed = 0.02f;
+	// Speed of rotation in radians per second
+	const float rotationSpeed = glm::radians(10.0f); // 10 degrees per second
 
-	static float totalAngle = 0.0f;
-	totalAngle += rotationSpeed * deltaTime;
+	// Accumulate total time for continuous rotation
+	static float totalTime = 0.0f;
+	totalTime += deltaTime;
 
-	glm::vec3 initialDir = glm::normalize(glm::vec3(-1.0f, -1.0f, -0.5f));
+	// Calculate the new X and Z components of the direction vector 
+	// to make it rotate around the Y-axis (up axis).
+	// The Y-component (vertical angle) is kept constant for a simple rotation.
+	float x_component = glm::cos(totalTime * rotationSpeed);
+	float z_component = glm::sin(totalTime * rotationSpeed);
 
-	glm::mat4 rotationMatrix = glm::rotate(
-		glm::mat4(1.0f),
-		totalAngle,
-		glm::vec3(0.0f, 0.0f, 1.0f)
-	);
+	// The directional light points FROM the light position TO the objects.
+	// The direction vector in your setup is (-1.0f, -1.0f, -1.0f), 
+	// implying the light is coming from the (1, 1, 1) direction.
 
-	glm::vec4 newDir = rotationMatrix * glm::vec4(initialDir, 0.0f);
-	lights.dirLight.direction = glm::normalize(newDir);
-	*/
+	// We'll keep the magnitude of the light direction consistent. 
+	// Here, we maintain the original vertical angle but spin horizontally.
+
+	// Example: Use a fixed 'down' component (like -1.0f or -0.5f) 
+	// and let the horizontal (X/Z) components rotate.
+
+	lights.dirLight.direction.x = x_component;
+	lights.dirLight.direction.y = -1.0f; // Kept constant for a consistent "angle of incidence"
+	lights.dirLight.direction.z = z_component;
+
+	// The 'w' component is typically 0.0 for a directional light
+	lights.dirLight.direction.w = 0.0f;
+
+	// Important: Normalize the direction vector 
+	// just in case any floating-point error accumulates.
+	lights.dirLight.direction = glm::normalize(lights.dirLight.direction);
 }
 
 void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime)
