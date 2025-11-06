@@ -309,39 +309,75 @@ int main()
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-	VkRenderingAttachmentInfo colorAttachment{};
-	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT; // Enable resolve
-	colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // For presentation
-	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	// Shadow pass
+	VkImageMemoryBarrier2 shaderToDepthBarrier{};
+	shaderToDepthBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+	shaderToDepthBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+	shaderToDepthBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+	shaderToDepthBarrier.dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
+	shaderToDepthBarrier.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	shaderToDepthBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	shaderToDepthBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	shaderToDepthBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	shaderToDepthBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	shaderToDepthBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+	shaderToDepthBarrier.subresourceRange.baseMipLevel = 0;
+	shaderToDepthBarrier.subresourceRange.levelCount = 1;
+	shaderToDepthBarrier.subresourceRange.baseArrayLayer = 0;
+	shaderToDepthBarrier.subresourceRange.layerCount = 1;
 
-	VkRenderingAttachmentInfo depthAttachment{};
-	depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	VkDependencyInfo shaderToDepthDep{};
+	shaderToDepthDep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	shaderToDepthDep.imageMemoryBarrierCount = 1;
+	shaderToDepthDep.pImageMemoryBarriers = &shaderToDepthBarrier;
 
-	VkRenderingInfo renderingInfo{};
-	renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-	renderingInfo.layerCount = 1;
-	renderingInfo.colorAttachmentCount = 1;
-	renderingInfo.pColorAttachments = &colorAttachment;
-	renderingInfo.pDepthAttachment = &depthAttachment;
+	VkRenderingAttachmentInfo shadowDepthAttachment{};
+	shadowDepthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	shadowDepthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	shadowDepthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	shadowDepthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	shadowDepthAttachment.clearValue.depthStencil = { 1.0f, 0 };
 
-	VkRenderingAttachmentInfo imguiColorAttachment{};
-	imguiColorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	imguiColorAttachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-	imguiColorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-	imguiColorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	VkRenderingInfo shadowRenderingInfo{};
+	shadowRenderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	shadowRenderingInfo.renderArea.offset = { 0, 0 };
+	shadowRenderingInfo.layerCount = 1;
+	shadowRenderingInfo.colorAttachmentCount = 0; // depth only
+	shadowRenderingInfo.pDepthAttachment = &shadowDepthAttachment;
 
-	VkRenderingInfo imguiRenderingInfo{};
-	imguiRenderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-	imguiRenderingInfo.layerCount = 1;
-	imguiRenderingInfo.colorAttachmentCount = 1;
-	imguiRenderingInfo.pColorAttachments = &imguiColorAttachment;
+	VkViewport shadowViewport{};
+	shadowViewport.x = 0.0f;
+	shadowViewport.y = 0.0f;
+	shadowViewport.minDepth = 0.0f;
+	shadowViewport.maxDepth = 1.0f;
 
+	VkRect2D shadowScissor{};
+	shadowScissor.offset = { 0, 0 };
+
+	VkDescriptorSet set = descriptors.getDescriptorSet();
+
+	VkImageMemoryBarrier2 depthToShaderBarrier{};
+	depthToShaderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+	depthToShaderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+	depthToShaderBarrier.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	depthToShaderBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+	depthToShaderBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+	depthToShaderBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	depthToShaderBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	depthToShaderBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	depthToShaderBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	depthToShaderBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+	depthToShaderBarrier.subresourceRange.baseMipLevel = 0;
+	depthToShaderBarrier.subresourceRange.levelCount = 1;
+	depthToShaderBarrier.subresourceRange.baseArrayLayer = 0;
+	depthToShaderBarrier.subresourceRange.layerCount = 1;
+
+	VkDependencyInfo depthToShaderDep{};
+	depthToShaderDep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	depthToShaderDep.imageMemoryBarrierCount = 1;
+	depthToShaderDep.pImageMemoryBarriers = &depthToShaderBarrier;
+
+	// Opaque, skybox, transparency, debug passes
 	VkImageMemoryBarrier2 preRenderBarrier{};
 	preRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
 	preRenderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -363,6 +399,50 @@ int main()
 	preDepInfo.imageMemoryBarrierCount = 1;
 	preDepInfo.pImageMemoryBarriers = &preRenderBarrier;
 
+	VkRenderingAttachmentInfo colorAttachment{};
+	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT; // Enable resolve
+	colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // For presentation
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+	VkRenderingAttachmentInfo depthAttachment{};
+	depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+
+	VkRenderingInfo renderingInfo{};
+	renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	renderingInfo.layerCount = 1;
+	renderingInfo.colorAttachmentCount = 1;
+	renderingInfo.pColorAttachments = &colorAttachment;
+	renderingInfo.pDepthAttachment = &depthAttachment;
+
+	VkViewport viewport{};
+	viewport.x = 0.0f;
+	viewport.y = 0.0f;
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+
+	VkRect2D scissor{};
+	scissor.offset = { 0, 0 };
+
+	// ImGui pass
+	VkRenderingAttachmentInfo imguiColorAttachment{};
+	imguiColorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	imguiColorAttachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+	imguiColorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	imguiColorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+	VkRenderingInfo imguiRenderingInfo{};
+	imguiRenderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	imguiRenderingInfo.layerCount = 1;
+	imguiRenderingInfo.colorAttachmentCount = 1;
+	imguiRenderingInfo.pColorAttachments = &imguiColorAttachment;
+
+	// Submission & Presentation
 	VkImageMemoryBarrier2 postRenderBarrier{};
 	postRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
 	postRenderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -409,8 +489,6 @@ int main()
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	presentInfo.waitSemaphoreCount = 1;
 	presentInfo.swapchainCount = 1;
-
-	VkDescriptorSet set = descriptors.getDescriptorSet();
 
 	// Group objects by mesh
 	std::unordered_map<uint32_t, std::vector<uint32_t>> objectsByMesh;	
@@ -525,64 +603,21 @@ int main()
 			shadowPC.lightViewProj = cascade.viewProj;
 
 			// 1. Transition shadowmap to attachment optimal
-			VkImageMemoryBarrier2 shadowBarrier{};
-			shadowBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-			shadowBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-			shadowBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-			shadowBarrier.dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
-			shadowBarrier.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-			shadowBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			shadowBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-			shadowBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			shadowBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			shadowBarrier.image = image.getShadowMaps()[i].image;
-			shadowBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-			shadowBarrier.subresourceRange.baseMipLevel = 0;
-			shadowBarrier.subresourceRange.levelCount = 1;
-			shadowBarrier.subresourceRange.baseArrayLayer = 0;
-			shadowBarrier.subresourceRange.layerCount = 1;
-
-			VkDependencyInfo shadowDepInfo{};
-			shadowDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-			shadowDepInfo.imageMemoryBarrierCount = 1;
-			shadowDepInfo.pImageMemoryBarriers = &shadowBarrier;
-
-			vkCmdPipelineBarrier2(cmd, &shadowDepInfo);
+			shaderToDepthBarrier.image = image.getShadowMaps()[i].image;
+			vkCmdPipelineBarrier2(cmd, &shaderToDepthDep);
 
 			// 2. Shadow Pass rendering info
-			VkRenderingAttachmentInfo shadowDepthAttachment{};
-			shadowDepthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 			shadowDepthAttachment.imageView = image.getShadowMaps()[i].view;
-			shadowDepthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-			shadowDepthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-			shadowDepthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-			shadowDepthAttachment.clearValue.depthStencil = { 1.0f, 0 };
-
-			VkRenderingInfo shadowRenderingInfo{};
-			shadowRenderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-			shadowRenderingInfo.renderArea.offset = { 0, 0 };
 			shadowRenderingInfo.renderArea.extent = image.getShadowMaps()[i].extent;
-			shadowRenderingInfo.layerCount = 1;
-			shadowRenderingInfo.colorAttachmentCount = 0; // depth only
-			shadowRenderingInfo.pDepthAttachment = &shadowDepthAttachment;
 
 			// 3. Render into shadow map
 			vkCmdBeginRendering(cmd, &shadowRenderingInfo);
 			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowPipeline.getPipeline());
 
-			VkViewport shadowViewport{};
-			shadowViewport.x = 0.0f;
-			shadowViewport.y = 0.0f;
 			shadowViewport.width = (float)image.getShadowMaps()[i].extent.width;
 			shadowViewport.height = (float)image.getShadowMaps()[i].extent.height;
-			shadowViewport.minDepth = 0.0f;
-			shadowViewport.maxDepth = 1.0f;
-
-			VkRect2D shadowScissor{};
-			shadowScissor.offset = { 0, 0 };
 			shadowScissor.extent = image.getShadowMaps()[i].extent;
 
-			// set all dynamic state
 			shadowPipeline.setViewport(cmd, shadowViewport);
 			shadowPipeline.setScissor(cmd, shadowScissor);
 			shadowPipeline.setCullMode(cmd, VK_CULL_MODE_BACK_BIT);
@@ -624,13 +659,8 @@ int main()
 			vkCmdEndRendering(cmd);
 
 			// 4. Transition shadow map to shader read
-			shadowBarrier.srcStageMask = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
-			shadowBarrier.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-			shadowBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-			shadowBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-			shadowBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-			shadowBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			vkCmdPipelineBarrier2(cmd, &shadowDepInfo);
+			depthToShaderBarrier.image = image.getShadowMaps()[i].image;
+			vkCmdPipelineBarrier2(cmd, &depthToShaderDep);
 		}
 		vkCmdEndDebugUtilsLabelEXT(cmd);
 
@@ -655,16 +685,8 @@ int main()
 		vkCmdBeginRendering(cmd, &renderingInfo);
 
 		// Declare dynamic states
-		VkViewport viewport{};
-		viewport.x = 0.0f;
-		viewport.y = 0.0f;
 		viewport.width = (float)swapchain.getExtent().width;
 		viewport.height = (float)swapchain.getExtent().height;
-		viewport.minDepth = 0.0f;
-		viewport.maxDepth = 1.0f;
-
-		VkRect2D scissor{};
-		scissor.offset = { 0, 0 };
 		scissor.extent = swapchain.getExtent();
 
 		VkPolygonMode polygonMode = imgui.enableWireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
@@ -1174,38 +1196,12 @@ void setupLighting(GPUBuffer& buffer, LightingData& lights)
 void updateLighting(LightingData& lights, float deltaTime)
 {
 	// Speed of rotation in radians per second
-	constexpr float rotationSpeed = glm::radians(10.0f); // 10 degrees per second
+	constexpr float rotationSpeed = glm::radians(10.0f);
 
-	// Accumulate total time for continuous rotation
 	static float totalTime = 0.0f;
 	totalTime += deltaTime;
-
-	// Calculate the new X and Z components of the direction vector 
-	// to make it rotate around the Y-axis (up axis).
-	// The Y-component (vertical angle) is kept constant for a simple rotation.
-	float x_component = glm::cos(totalTime * rotationSpeed);
-	float z_component = glm::sin(totalTime * rotationSpeed);
-
-	// The directional light points FROM the light position TO the objects.
-	// The direction vector in your setup is (-1.0f, -1.0f, -1.0f), 
-	// implying the light is coming from the (1, 1, 1) direction.
-
-	// We'll keep the magnitude of the light direction consistent. 
-	// Here, we maintain the original vertical angle but spin horizontally.
-
-	// Example: Use a fixed 'down' component (like -1.0f or -0.5f) 
-	// and let the horizontal (X/Z) components rotate.
-
-	lights.dirLight.direction.x = x_component;
-	lights.dirLight.direction.y = -1.0f; // Kept constant for a consistent "angle of incidence"
-	lights.dirLight.direction.z = z_component;
-
-	// The 'w' component is typically 0.0 for a directional light
-	lights.dirLight.direction.w = 0.0f;
-
-	// Important: Normalize the direction vector 
-	// just in case any floating-point error accumulates.
-	lights.dirLight.direction = glm::normalize(lights.dirLight.direction);
+	lights.dirLight.direction.x = glm::cos(totalTime * rotationSpeed);
+	lights.dirLight.direction.z = glm::sin(totalTime * rotationSpeed);
 }
 
 void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime)
