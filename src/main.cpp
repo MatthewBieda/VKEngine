@@ -26,7 +26,7 @@
 #include "Swapchain.hpp" // Swapchain, image views
 #include "Commands.hpp" // Command pool & Command buffers
 #include "GPUBuffer.hpp" // Vertex, index, uniform, storage buffers
-#include "GPUImage.hpp" // TextureImage, DepthImage, MSAAImage, Skybox?
+#include "GPUImage.hpp" // TextureImage, SwapchainDepthImage, Shadowmaps, MSAAImage
 #include "DescriptorManager.hpp" // Bindless descriptors
 #include "Pipeline.hpp" // Shaders, pipeline layout, pipeline
 #include "Sync.hpp" // Semaphores & Fences
@@ -204,6 +204,7 @@ void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData);
 void setupLighting(GPUBuffer& buffer, LightingData& lights);
 void updateLighting(LightingData& lights, float deltaTime);
 void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime);
+
 std::vector<uint32_t> performFrustumCulling(std::vector<ObjectData>& objectData, const std::vector<Mesh>& allMeshes, const Frustum& frustum);
 DrawLists buildDrawCommands(
 	const std::vector<uint32_t>& globalVisibleIndices,
@@ -218,7 +219,6 @@ void generateDebugGeometry(std::vector<DebugVertex>& debugVertices,
 	const std::vector<Mesh>& allMeshes,
 	const std::vector<Submesh>& allSubmeshes,
 	bool showMeshAABB, bool showSubmeshAABB);
-
 std::vector<DebugVertex> generateAABBLines(const AABB& aabb, const glm::vec4& color);
 
 void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image);
@@ -529,16 +529,16 @@ int main()
 
 		// Calculate the new shadow cascade matrices based on the current camera view/proj
 		shadowCascades.updateCascades(
-			camera.Position,        // camPos
-			camera.Front,           // camFront
-			camera.Up,              // camUp
-			camera.Right,           // camRight
-			camera.Zoom,            // fov
+			camera.Position,
+			camera.Front,
+			camera.Up,    
+			camera.Right,
+			camera.Zoom,
 			(float)appState.windowWidth / (float)appState.windowHeight,
-			glm::normalize(glm::vec3(lights.dirLight.direction)), // lightDir
-			0.1f,                   // near plane
-			200.0f,                 // far plane
-			imgui.cascadeLambda     // Toggle lambda in ImGui (0.80f default)
+			glm::normalize(glm::vec3(lights.dirLight.direction)),
+			0.1f,
+			200.0f,
+			imgui.cascadeLambda // Toggle lambda in ImGui (0.80f default)
 		);
 		const std::vector<ShadowCascades::CascadeData>& cascades = shadowCascades.getCascades();
 

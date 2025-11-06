@@ -1,7 +1,8 @@
 <h1 align="center">VKEngine</h1>
 <h3 align="center">A 3D game engine created with Vulkan and C++20.</h3>
 
-![VKEngine Latest Version](https://i.ibb.co/VshfqQg/VKEngine-Episode6-Cover.jpg)
+![VKEngine Latest Version](https://i.ibb.co/xqFrRDYk/Cascaded-Shadow-Maps.jpg)
+<p align="center"><i>Demonstrating Cascaded Shadow Maps & MikkTSpace Normal Mapping</i></p>
 
 ### Current Features:
 
@@ -53,8 +54,8 @@
 - **Bindless Textures**  
   Uses descriptor indexing to give shaders direct access to large arrays of textures, eliminating the need to bind textures individually per draw call.
 
-- **Frustum Culling**  
-  Cull all objects that are not currently within the camera frustum in order to massively improve rendering efficiency. 
+- **Frustum Culling**
+  High-performance visibility culling using multithreading, SIMD intrinsics & fast AABB transformations to massively improve rendering efficiency.
 
 - **3D Audio**  
   Easy to use 2D and 3D Audio API provided by the SoLoud library.
@@ -62,15 +63,18 @@
 - **AABB Debug Visualizations**  
   View Mesh-level and Submesh-level bounding boxes in real-time directly in the engine. 
 
+- **MikkTSpace Normal Mapping**
+  Industry-standard tangent space calculation for accurate surface detail rendering.
+
+- **Cascaded Shadow Maps**
+  High-quality directional light shadows with multiple cascades for ultra high quality shadows. 
+
 ### Roadmap:	
 
 **Near-Term Goals**
-- Normal Maps
 - Skeletal Animations
-- Cascaded Shadow Maps
 - Deferred Rendering (Tiled Deferred + Forward Pass)
-- Probe-based Global Illumination
-- Simple Rigid-Body physics simulation
+- Post-processing (SSAO, SSR)
 - Object Picking, ImGuizmo integration, scene serialization, CPU metrics (Editor features)
 
 **Future / Experimental**
