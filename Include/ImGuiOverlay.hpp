@@ -1,4 +1,7 @@
 #pragma once
+#include <array>
+#include <vector>
+#include "ShadowCascades.hpp"
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -28,15 +31,24 @@ public:
 
 	void drawUI();
 
-	inline static bool showMetrics = VK_FALSE;
+	VkDescriptorSet createImGuiTextureDescriptor(VkImageView imageView, VkSampler sampler);
+
+	void drawShadowMapVisualization(
+		const std::array<VkDescriptorSet, 4>& shadowMapDescriptorSets,
+		const std::vector<ShadowCascades::CascadeData>& cascades) const;
+
+	inline static bool showMetrics = VK_TRUE;
 	inline static bool enableDepthTest = VK_TRUE;
 	inline static bool enableWireframe = VK_FALSE;
 	inline static bool enableDirectionalLight = VK_TRUE;
-	inline static bool enablePointLights = VK_TRUE;
+	inline static bool enablePointLights = VK_FALSE;
 	inline static bool freezeFrustum = VK_FALSE;
 	inline static bool showMeshAABB = VK_FALSE;
 	inline static bool showSubmeshAABB = VK_FALSE;
 	inline static bool enableNormalMaps = VK_TRUE;
+	inline static bool showShadowMap = VK_TRUE;
+	inline static bool showCascadeColors = VK_FALSE;
+	inline static float cascadeLambda = 0.80f;
 
 private:
 	static void checkVkResult(VkResult err);

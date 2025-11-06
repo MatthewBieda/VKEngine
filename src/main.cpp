@@ -6,6 +6,8 @@
 #include <unordered_set>
 #include <algorithm>
 #include <filesystem>
+#include <execution> // C++ 17 parallel algorithms
+#include <ranges>
 
 #include "soloud.h"
 #include "soloud_wav.h"
@@ -37,6 +39,7 @@
 #include "Frustum.hpp" // Camera frustum data
 #include "AABB.hpp" // Axis-Aligned Bounding Boxes
 #include "TangentGen.hpp" // Use MikkTSpace standard to generate tangents
+#include "ShadowCascades.hpp" // For Cascaded Shadow Maps
 
 // Audio test
 SoLoud::Soloud gSoLoud; // SoLoud engine
@@ -57,14 +60,25 @@ struct PushConstants
 	uint32_t normalTextureIndex = 0;
 	uint32_t enableNormalMaps = 1;
 	float reflectionStrength = 0.0f;
-	uint32_t padding1 = 0;
+	uint32_t showCascadeColors = 0;
+	uint32_t padding2 = 0;
 } pc;
+
+struct CascadeData
+{
+	glm::mat4 cascadeViewProjs[ShadowCascades::NUM_CASCADES]{}; // All cascade matrices
+	glm::vec4 cascadeSplits{}; // Store split distances (x, y, z, w for 4 cascades)
+} cascadeData;
 
 struct DebugPushConstants
 {
 	glm::mat4 view{};
 	glm::mat4 proj{};
 } debugPC;
+
+struct ShadowPushConstants {
+	glm::mat4 lightViewProj;
+} shadowPC;
 
 struct LightingData
 {
@@ -147,6 +161,23 @@ struct AppState
 
 Camera camera;
 
+using Clock = std::chrono::high_resolution_clock;
+using ms = std::chrono::duration<double, std::milli>;
+
+struct ScopedTimer
+{
+	const char* label;
+	Clock::time_point start;
+
+	ScopedTimer(const char* lbl) : label(lbl), start(Clock::now()) {}
+	~ScopedTimer()
+	{
+		auto end = Clock::now();
+		double elapsed = std::chrono::duration_cast<ms>(end - start).count();
+		std::cout << label << ": " << elapsed << " ms" << std::endl;
+	}
+};
+
 std::vector<Vertex> allVertices{};
 std::vector<uint32_t> allIndices{};
 std::vector<Mesh> allMeshes{};
@@ -163,12 +194,10 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass);
 
 enum class MeshType
 {
-	LightCaster,
-	Sponza,
-	AlphaTestedGrass,
-	GlassWindow,
+	GroundPlane,
 	Cube,
-	BrickWall
+	BrickWall,
+	SnakeStatue
 };
 
 void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData);
@@ -210,6 +239,12 @@ int main()
 	image.createDepthImage(swapchain.getExtent().width, swapchain.getExtent().height);
 	image.createMSAAColorImage(swapchain.getExtent().width, swapchain.getExtent().height, swapchain.getFormat());
 
+	const uint32_t SHADOW_MAP_RES = 4096;
+	for (uint32_t i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
+	{
+		image.createShadowMap(SHADOW_MAP_RES, SHADOW_MAP_RES);
+	}
+
 	// Load textures and models
 	std::array<std::string, 6> skyBoxFaces = {
 		"../Textures/Skyboxes/YokohamaCity/posx.jpg",
@@ -221,17 +256,21 @@ int main()
 	};
 	image.createCubemap(skyBoxFaces);
 
-	uint32_t lightCaster = loadModel("../Models/LightCaster/lightCaster.obj", image);
-	uint32_t sponza = loadModel("../Models/SponzaSeparated/sponzaAABB.obj", image);
-	uint32_t alphaTestedGrass = loadModel("../Models/Grass/untitled.obj", image);
-	uint32_t glassWindow = loadModel("../Models/GlassWindow/glassWindow.obj", image);
+	//uint32_t lightCaster = loadModel("../Models/LightCaster/lightCaster.obj", image);
+	//uint32_t sponza = loadModel("../Models/SponzaSeparated/sponzaAABB.obj", image);
+	//uint32_t alphaTestedGrass = loadModel("../Models/Grass/untitled.obj", image);
+	//uint32_t glassWindow = loadModel("../Models/GlassWindow/glassWindow.obj", image);
+
+	uint32_t groundPlane = loadModel("../Models/GroundPlane/groundPlane.obj", image);
 	uint32_t cube = loadModel("../Models/Cube/cube.obj", image);
 	uint32_t brickWall = loadModel("../Models/BrickWall/BrickWall.obj", image);
+	uint32_t snakeStatue = loadModel("../Models/SnakeStatue/SnakeStatue.obj", image);
 
 	// Create buffers and populate scene
 	GPUBuffer buffer(context, commands, allVertices, allIndices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
 	setupLighting(buffer, lights);
 	setupSceneObjects(buffer, objectData);
+	buffer.createCascadeBuffer(sizeof(CascadeData));
 
 	// Setup descriptors and pipelines
 	DescriptorManager descriptors(context, buffer, image);
@@ -241,23 +280,124 @@ int main()
 	Pipeline skyboxPipeline(context, swapchain, descriptors, sizeof(PushConstants), "../Shaders/skyboxvert.spv", "../Shaders/skyboxfrag.spv", image.getDepthFormat(), PipelineType::Skybox);
 	Pipeline transparentPipeline(context, swapchain, descriptors, sizeof(PushConstants), "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat(), PipelineType::Transparent);
 	Pipeline debugPipeline(context, swapchain, descriptors, sizeof(DebugPushConstants), "../Shaders/debug_vert.spv", "../Shaders/debug_frag.spv", image.getDepthFormat(), PipelineType::DebugAABB);
+	Pipeline shadowPipeline(context, swapchain, descriptors, sizeof(ShadowPushConstants), "../Shaders/shadow_vert.spv", "", image.getDepthFormat(), PipelineType::ShadowMap);
 
 	// Setup syncronization and UI
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
 	ImGuiOverlay imgui;
 	imgui.init(window, context, descriptors, swapchain.getFormat(), swapchain.getImageCount(), image.getMSAASamples());
 
+	std::array<VkDescriptorSet, ShadowCascades::NUM_CASCADES> shadowMapImGuiDescriptors;
+	for (uint32_t i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
+	{
+		shadowMapImGuiDescriptors[i] = imgui.createImGuiTextureDescriptor(
+			image.getShadowMaps()[i].debugView,
+			image.getShadowSampler()
+		);
+	}
+
 	//Debug labels
+	VkDebugUtilsLabelEXT shadowPassLabel = makeLabel("Shadow Pass", 0.0f, 1.0f, 1.0f);
 	VkDebugUtilsLabelEXT opaquePassLabel = makeLabel("Opaque Pass", 0.0f, 1.0f, 0.0f);
 	VkDebugUtilsLabelEXT skyboxPassLabel = makeLabel("Skybox Pass", 0.3f, 0.7f, 1.0f);
 	VkDebugUtilsLabelEXT transparentPassLabel = makeLabel("Transparent Pass", 1.0f, 0.5f, 0.0f);
-	VkDebugUtilsLabelEXT imguiPassLabel = makeLabel("ImGui Pass", 1.0f, 0.0f, 1.0f);
 	VkDebugUtilsLabelEXT debugPassLabel = makeLabel("Debug Wireframe Pass", 1.0f, 1.0f, 0.0f);
+	VkDebugUtilsLabelEXT imguiPassLabel = makeLabel("ImGui Pass", 1.0f, 0.0f, 1.0f);
 
 	// Pre-render loop struct initialization
 	VkCommandBufferBeginInfo beginInfo{};
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	// Shadow pass
+	VkImageMemoryBarrier2 shaderToDepthBarrier{};
+	shaderToDepthBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+	shaderToDepthBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+	shaderToDepthBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+	shaderToDepthBarrier.dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
+	shaderToDepthBarrier.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	shaderToDepthBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	shaderToDepthBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	shaderToDepthBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	shaderToDepthBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	shaderToDepthBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+	shaderToDepthBarrier.subresourceRange.baseMipLevel = 0;
+	shaderToDepthBarrier.subresourceRange.levelCount = 1;
+	shaderToDepthBarrier.subresourceRange.baseArrayLayer = 0;
+	shaderToDepthBarrier.subresourceRange.layerCount = 1;
+
+	VkDependencyInfo shaderToDepthDep{};
+	shaderToDepthDep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	shaderToDepthDep.imageMemoryBarrierCount = 1;
+	shaderToDepthDep.pImageMemoryBarriers = &shaderToDepthBarrier;
+
+	VkRenderingAttachmentInfo shadowDepthAttachment{};
+	shadowDepthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	shadowDepthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	shadowDepthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	shadowDepthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	shadowDepthAttachment.clearValue.depthStencil = { 1.0f, 0 };
+
+	VkRenderingInfo shadowRenderingInfo{};
+	shadowRenderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	shadowRenderingInfo.renderArea.offset = { 0, 0 };
+	shadowRenderingInfo.layerCount = 1;
+	shadowRenderingInfo.colorAttachmentCount = 0; // depth only
+	shadowRenderingInfo.pDepthAttachment = &shadowDepthAttachment;
+
+	VkViewport shadowViewport{};
+	shadowViewport.x = 0.0f;
+	shadowViewport.y = 0.0f;
+	shadowViewport.minDepth = 0.0f;
+	shadowViewport.maxDepth = 1.0f;
+
+	VkRect2D shadowScissor{};
+	shadowScissor.offset = { 0, 0 };
+
+	VkDescriptorSet set = descriptors.getDescriptorSet();
+
+	VkImageMemoryBarrier2 depthToShaderBarrier{};
+	depthToShaderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+	depthToShaderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+	depthToShaderBarrier.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	depthToShaderBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+	depthToShaderBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+	depthToShaderBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	depthToShaderBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	depthToShaderBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	depthToShaderBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	depthToShaderBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+	depthToShaderBarrier.subresourceRange.baseMipLevel = 0;
+	depthToShaderBarrier.subresourceRange.levelCount = 1;
+	depthToShaderBarrier.subresourceRange.baseArrayLayer = 0;
+	depthToShaderBarrier.subresourceRange.layerCount = 1;
+
+	VkDependencyInfo depthToShaderDep{};
+	depthToShaderDep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	depthToShaderDep.imageMemoryBarrierCount = 1;
+	depthToShaderDep.pImageMemoryBarriers = &depthToShaderBarrier;
+
+	// Opaque, skybox, transparency, debug passes
+	VkImageMemoryBarrier2 preRenderBarrier{};
+	preRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+	preRenderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+	preRenderBarrier.srcAccessMask = VK_ACCESS_2_NONE;
+	preRenderBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+	preRenderBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+	preRenderBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	preRenderBarrier.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+	preRenderBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	preRenderBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	preRenderBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	preRenderBarrier.subresourceRange.baseMipLevel = 0;
+	preRenderBarrier.subresourceRange.levelCount = 1;
+	preRenderBarrier.subresourceRange.baseArrayLayer = 0;
+	preRenderBarrier.subresourceRange.layerCount = 1;
+
+	VkDependencyInfo preDepInfo{};
+	preDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	preDepInfo.imageMemoryBarrierCount = 1;
+	preDepInfo.pImageMemoryBarriers = &preRenderBarrier;
 
 	VkRenderingAttachmentInfo colorAttachment{};
 	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -280,6 +420,16 @@ int main()
 	renderingInfo.pColorAttachments = &colorAttachment;
 	renderingInfo.pDepthAttachment = &depthAttachment;
 
+	VkViewport viewport{};
+	viewport.x = 0.0f;
+	viewport.y = 0.0f;
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+
+	VkRect2D scissor{};
+	scissor.offset = { 0, 0 };
+
+	// ImGui pass
 	VkRenderingAttachmentInfo imguiColorAttachment{};
 	imguiColorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 	imguiColorAttachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
@@ -292,27 +442,7 @@ int main()
 	imguiRenderingInfo.colorAttachmentCount = 1;
 	imguiRenderingInfo.pColorAttachments = &imguiColorAttachment;
 
-	VkImageMemoryBarrier2 preRenderBarrier{};
-	preRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-	preRenderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-	preRenderBarrier.srcAccessMask = VK_ACCESS_2_NONE;
-	preRenderBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-	preRenderBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-	preRenderBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	preRenderBarrier.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-	preRenderBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	preRenderBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	preRenderBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	preRenderBarrier.subresourceRange.baseMipLevel = 0;
-	preRenderBarrier.subresourceRange.levelCount = 1;
-	preRenderBarrier.subresourceRange.baseArrayLayer = 0;
-	preRenderBarrier.subresourceRange.layerCount = 1;
-
-	VkDependencyInfo preDepInfo{};
-	preDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-	preDepInfo.imageMemoryBarrierCount = 1;
-	preDepInfo.pImageMemoryBarriers = &preRenderBarrier;
-
+	// Submission & Presentation
 	VkImageMemoryBarrier2 postRenderBarrier{};
 	postRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
 	postRenderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -360,8 +490,6 @@ int main()
 	presentInfo.waitSemaphoreCount = 1;
 	presentInfo.swapchainCount = 1;
 
-	VkDescriptorSet set = descriptors.getDescriptorSet();
-
 	// Group objects by mesh
 	std::unordered_map<uint32_t, std::vector<uint32_t>> objectsByMesh;	
 	for (uint32_t i = 0; i < objectData.size(); ++i)
@@ -375,7 +503,9 @@ int main()
 	// Begin background music
 	//gSoLoud.play(gWave, 0.3f, 0.0f, 0.0);
 
+	ShadowCascades shadowCascades{};
 	double lastTime{};
+
 	while (!glfwWindowShouldClose(window))
 	{
 		double currentTime = glfwGetTime();
@@ -394,8 +524,29 @@ int main()
 		pc.view = camera.GetViewMatrix();
 		pc.proj = glm::perspective(glm::radians(camera.Zoom),
 			(float)appState.windowWidth / (float)appState.windowHeight,
-			0.1f, 50.0f);
+			0.1f, 200.0f);
 		pc.proj[1][1] *= -1; // Flip Y for Vulkan
+
+		// Calculate the new shadow cascade matrices based on the current camera view/proj
+		shadowCascades.updateCascades(
+			camera.Position,        // camPos
+			camera.Front,           // camFront
+			camera.Up,              // camUp
+			camera.Right,           // camRight
+			camera.Zoom,            // fov
+			(float)appState.windowWidth / (float)appState.windowHeight,
+			glm::normalize(glm::vec3(lights.dirLight.direction)), // lightDir
+			0.1f,                   // near plane
+			200.0f,                 // far plane
+			imgui.cascadeLambda     // Toggle lambda in ImGui (0.80f default)
+		);
+		const std::vector<ShadowCascades::CascadeData>& cascades = shadowCascades.getCascades();
+
+		for (int i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
+		{
+			cascadeData.cascadeViewProjs[i] = cascades[i].viewProj;
+		}
+		cascadeData.cascadeSplits = glm::vec4(cascades[0].farDepth, cascades[1].farDepth, cascades[2].farDepth, cascades[3].farDepth);
 
 		glm::mat4 viewProj = pc.proj * pc.view;
 		frustum.update(viewProj);
@@ -417,6 +568,7 @@ int main()
 		// Update GPU resources
 		buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData), currentFrame);
 		buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);
+		buffer.updateCascadeBuffer(&cascadeData, sizeof(CascadeData), currentFrame);
 		if (!globalVisibleIndices.empty())
 		{
 			buffer.updateVisibleIndexBuffer(globalVisibleIndices.data(), globalVisibleIndices.size() * sizeof(uint32_t), currentFrame);
@@ -443,6 +595,78 @@ int main()
 		VkCommandBuffer cmd = commands.getCommandBuffer(currentFrame);
 		vkBeginCommandBuffer(cmd, &beginInfo);
 
+		// -- SHADOW RENDER PASS --
+		vkCmdBeginDebugUtilsLabelEXT(cmd, &shadowPassLabel);
+		for (uint32_t i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
+		{
+			const auto& cascade = cascades[i];
+			shadowPC.lightViewProj = cascade.viewProj;
+
+			// 1. Transition shadowmap to attachment optimal
+			shaderToDepthBarrier.image = image.getShadowMaps()[i].image;
+			vkCmdPipelineBarrier2(cmd, &shaderToDepthDep);
+
+			// 2. Shadow Pass rendering info
+			shadowDepthAttachment.imageView = image.getShadowMaps()[i].view;
+			shadowRenderingInfo.renderArea.extent = image.getShadowMaps()[i].extent;
+
+			// 3. Render into shadow map
+			vkCmdBeginRendering(cmd, &shadowRenderingInfo);
+			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowPipeline.getPipeline());
+
+			shadowViewport.width = (float)image.getShadowMaps()[i].extent.width;
+			shadowViewport.height = (float)image.getShadowMaps()[i].extent.height;
+			shadowScissor.extent = image.getShadowMaps()[i].extent;
+
+			shadowPipeline.setViewport(cmd, shadowViewport);
+			shadowPipeline.setScissor(cmd, shadowScissor);
+			shadowPipeline.setCullMode(cmd, VK_CULL_MODE_BACK_BIT);
+			shadowPipeline.setDepthTest(cmd, VK_TRUE);
+			shadowPipeline.setPolygonMode(cmd, VK_POLYGON_MODE_FILL);
+
+			vkCmdPushConstants(cmd, shadowPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ShadowPushConstants), &shadowPC);
+
+			// Calculate dynamic offset for current frame
+			std::array<uint32_t, 4> dynamicOffsets = {
+				static_cast<uint32_t>(currentFrame * buffer.getAlignedObjectSize()),
+				static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize()),
+				static_cast<uint32_t>(currentFrame * buffer.getAlignedVisibleIndexBufferSize()),
+				static_cast<uint32_t>(currentFrame * buffer.getAlignedCascadeSize()),
+			};
+
+			vkCmdBindDescriptorSets(cmd,
+				VK_PIPELINE_BIND_POINT_GRAPHICS,
+				shadowPipeline.getLayout(),
+				0, 1, &set,
+				static_cast<uint32_t>(dynamicOffsets.size()),
+				dynamicOffsets.data());
+
+			// Bind vertex/index buffers
+			VkBuffer vertexBuffers[] = { buffer.getVertexBuffer() };
+			VkDeviceSize offsets[] = { 0 };
+			vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
+			vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
+
+			// Draw opaque objects only (no transparent/alpha-tested for shadows)
+			for (uint32_t matIdx = 0; matIdx < drawLists.opaque.size(); ++matIdx)
+			{
+				const std::vector<DrawCommand>& drawCmds = drawLists.opaque[matIdx];
+				for (const DrawCommand& drawCmd : drawCmds)
+				{
+					vkCmdDrawIndexed(cmd, drawCmd.indexCount, drawCmd.instanceCount, drawCmd.firstIndex, drawCmd.vertexOffset, drawCmd.firstInstance);
+				}
+			}
+			vkCmdEndRendering(cmd);
+
+			// 4. Transition shadow map to shader read
+			depthToShaderBarrier.image = image.getShadowMaps()[i].image;
+			vkCmdPipelineBarrier2(cmd, &depthToShaderDep);
+		}
+		vkCmdEndDebugUtilsLabelEXT(cmd);
+
+		// -- OPAQUE RENDER PASS --
+		vkCmdBeginDebugUtilsLabelEXT(cmd, &opaquePassLabel);
+
 		// Transition swapchain to attachment
 		preRenderBarrier.image = swapchain.getSwapchainImage(imageIndex);
 		vkCmdPipelineBarrier2(cmd, &preDepInfo);
@@ -458,26 +682,15 @@ int main()
 		renderingInfo.renderArea.offset = { 0, 0 };
 		renderingInfo.renderArea.extent = swapchain.getExtent();
 
-		// Main render pass
 		vkCmdBeginRendering(cmd, &renderingInfo);
 
 		// Declare dynamic states
-		VkViewport viewport{};
-		viewport.x = 0.0f;
-		viewport.y = 0.0f;
 		viewport.width = (float)swapchain.getExtent().width;
 		viewport.height = (float)swapchain.getExtent().height;
-		viewport.minDepth = 0.0f;
-		viewport.maxDepth = 1.0f;
-
-		VkRect2D scissor{};
-		scissor.offset = { 0, 0 };
 		scissor.extent = swapchain.getExtent();
 
 		VkPolygonMode polygonMode = imgui.enableWireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
 
-		// 1. Opaque Pass (depth writes ON)
-		vkCmdBeginDebugUtilsLabelEXT(cmd, &opaquePassLabel);
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scenePipeline.getPipeline());
 		scenePipeline.setViewport(cmd, viewport);
 		scenePipeline.setScissor(cmd, scissor);
@@ -489,11 +702,11 @@ int main()
 		vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
 		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
-		// Calculate dynamic offset for current frame
-		std::array<uint32_t, 3> dynamicOffsets = {
+		std::array<uint32_t, 4> dynamicOffsets = {
 			static_cast<uint32_t>(currentFrame * buffer.getAlignedObjectSize()),
 			static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize()),
-			static_cast<uint32_t>(currentFrame * buffer.getAlignedVisibleIndexBufferSize())
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedVisibleIndexBufferSize()),
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedCascadeSize()),
 		};
 
 		vkCmdBindDescriptorSets(cmd, 
@@ -507,6 +720,7 @@ int main()
 		pc.enableDirectionalLight = imgui.enableDirectionalLight ? 1 : 0;
 		pc.enablePointLights = imgui.enablePointLights ? 1 : 0;
 		pc.enableNormalMaps = imgui.enableNormalMaps ? 1 : 0;
+		pc.showCascadeColors = imgui.showCascadeColors ? 1 : 0;
 
 		// Loop over meshes
 		for (uint32_t matIdx = 0; matIdx < drawLists.opaque.size(); ++matIdx)
@@ -539,7 +753,7 @@ int main()
 		}
 		vkCmdEndDebugUtilsLabelEXT(cmd);
 
-		// 2. Skybox pass (Depth wrties OFF, test ON)
+		// -- SKYBOX RENDER PASS --
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &skyboxPassLabel);
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeline.getPipeline());
 		skyboxPipeline.setViewport(cmd, viewport);
@@ -557,7 +771,7 @@ int main()
 		vkCmdDraw(cmd, 36, 1, 0, 0);
 		vkCmdEndDebugUtilsLabelEXT(cmd);
 
-		// 3. Transparent pass (Depth writes OFF, sorted back to front)
+		// -- TRANSPARENCY RENDER PASS --
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &transparentPassLabel);
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, transparentPipeline.getPipeline());
 
@@ -630,7 +844,8 @@ int main()
 		}
 		vkCmdEndDebugUtilsLabelEXT(cmd);
 
-		// 4. Debug wireframe pass
+		// -- DEBUG RENDER PASS --
+		vkCmdBeginDebugUtilsLabelEXT(cmd, &debugPassLabel);
 		if (imgui.showMeshAABB || imgui.showSubmeshAABB)
 		{
 			std::vector<DebugVertex> debugVertices;
@@ -644,7 +859,6 @@ int main()
 				buffer.createOrResizeDebugVertexBuffer(debugVertices.size());
 				memcpy(buffer.getDebugBufferMapped(), debugVertices.data(), debugVertices.size() * sizeof(DebugVertex));
 
-				vkCmdBeginDebugUtilsLabelEXT(cmd, &debugPassLabel);
 				vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, debugPipeline.getPipeline());
 				debugPipeline.setViewport(cmd, viewport);
 				debugPipeline.setScissor(cmd, scissor);
@@ -660,13 +874,14 @@ int main()
 					VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(debugPC), &debugPC);
 
 				vkCmdDraw(cmd, static_cast<uint32_t>(debugVertices.size()), 1, 0, 0);
-				vkCmdEndDebugUtilsLabelEXT(cmd);
 			}
 		}
 		vkCmdEndRendering(cmd);
+		vkCmdEndDebugUtilsLabelEXT(cmd);
 
-		// 5. UI pass
+		// -- UI RENDER PASS --
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &imguiPassLabel);
+		imgui.drawShadowMapVisualization(shadowMapImGuiDescriptors, cascades);
 		imgui.render();
 
 		imguiColorAttachment.imageView = swapchain.getSwapchainImageView(imageIndex);
@@ -674,9 +889,10 @@ int main()
 		imguiRenderingInfo.renderArea.extent = swapchain.getExtent();
 
 		vkCmdBeginRendering(cmd, &imguiRenderingInfo);
+
 		imgui.recordCommands(cmd);
-		vkCmdEndDebugUtilsLabelEXT(cmd);
 		vkCmdEndRendering(cmd);
+		vkCmdEndDebugUtilsLabelEXT(cmd);
 
 		// Transition to present
 		postRenderBarrier.image = swapchain.getSwapchainImage(imageIndex);
@@ -916,93 +1132,52 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 
 void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
 {
-	// Define spacing between cubes
-	float spacing = 3.0f;
-	uint32_t gridSize = 10;
-	uint32_t meshIndex = static_cast<uint32_t>(MeshType::Cube);
+	glm::vec3 pos{};
+	glm::mat4 model{};
+	uint32_t groundPlaneIndex{};
+	uint32_t SnakeStatueIndex{};
 
-	// Iterate rows
-	for (uint32_t x = 0; x < gridSize; ++x)
+	// Snake Statues - instanced grid on planes
+	groundPlaneIndex = static_cast<uint32_t>(MeshType::GroundPlane);
+	SnakeStatueIndex = static_cast<uint32_t>(MeshType::SnakeStatue);
+
+	const int gridCount = 5;     // 5x5 = 25 statues
+	const float spacing = 25.0f;  // distance between each statue
+
+	for (int x = 0; x < gridCount; ++x)
 	{
-		// Iterate cols
-		for (uint32_t z = 0; z < gridSize; ++z)
+		for (int z = 0; z < gridCount; ++z)
 		{
-			// Calculate the current cube's position
-			glm::vec3 pos = {
-				(float)x * spacing,
+			glm::vec3 offset = {
+				(x - gridCount / 2) * spacing,
 				0.0f,
-				(float)z * spacing
+				(z - gridCount / 2) * spacing
 			};
 
-			glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-			objectData.push_back({ model, meshIndex });
+			model = glm::translate(glm::mat4(1.0f), offset);
+
+			// Random rotation
+			float randomRot = glm::radians(static_cast<float>(rand() % 360));
+			model = glm::rotate(model, randomRot, glm::vec3(0.0f, 1.0f, 0.0f));
+
+			objectData.push_back({ model, SnakeStatueIndex });
 		}
 	}
 
-	// MASSIVE 20x20x25 CUBE GRID (10,000 objects)
-	spacing = 1.0f; // Very dense spacing
-	uint32_t sizeX = 20;
-	uint32_t sizeY = 20;
-	uint32_t sizeZ = 25;
-	meshIndex = static_cast<uint32_t>(MeshType::Cube);
-
-	// Initial offset to place the grid away from the origin
-	glm::vec3 baseOffset = { 0.0f, 10.0f, 0.0f };
-
-	for (uint32_t x = 0; x < sizeX; ++x)
+	for (int x = 0; x < gridCount; ++x)
 	{
-		for (uint32_t y = 0; y < sizeY; ++y)
+		for (int z = 0; z < gridCount; ++z)
 		{
-			for (uint32_t z = 0; z < sizeZ; ++z)
-			{
-				glm::vec3 pos = {
-					baseOffset.x + (float)x * spacing,
-					baseOffset.y + (float)y * spacing,
-					baseOffset.z + (float)z * spacing
-				};
-
-				glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-				model = glm::scale(model, glm::vec3(0.4f));
-
-				objectData.push_back({ model, meshIndex });
-			}
-		}
-	}
-
-	// Add windows
-	spacing = 2.0f;
-	gridSize = 4;
-	meshIndex = static_cast<uint32_t>(MeshType::GlassWindow);
-
-	// Iterate rows
-	for (uint32_t x = 0; x < gridSize; ++x)
-	{
-		// Iterate cols
-		for (uint32_t z = 0; z < gridSize; ++z)
-		{
-			// Calculate the current cube's position
-			glm::vec3 pos = {
-				(float)x * spacing,
-				5.0f,
-				(float)z * spacing
+			glm::vec3 offset = {
+				(x - gridCount / 2) * spacing,
+				0.0f,
+				(z - gridCount / 2) * spacing
 			};
 
-			glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-			objectData.push_back({ model, meshIndex });
+			model = glm::translate(glm::mat4(1.0f), offset);
+			objectData.push_back({ model, groundPlaneIndex });
 		}
 	}
-
-	// Add a sponza
-	glm::vec3 pos = { 50.0f, -10.0f, 5.0f };
-	glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-	meshIndex = static_cast<uint32_t>(MeshType::Sponza);
-	objectData.push_back({ model, meshIndex });
-
-	// Add brick wall
-	pos = { -10.0f, 0.0f, 0.0f };
-	model = glm::translate(glm::mat4(1.0f), pos);
-	meshIndex = static_cast<uint32_t>(MeshType::BrickWall);
-	objectData.push_back({ model, meshIndex });
 
 	buffer.createObjectBuffer(objectData.size());
 	buffer.createVisibleIndexBuffer(objectData.size());
@@ -1020,75 +1195,52 @@ void setupLighting(GPUBuffer& buffer, LightingData& lights)
 
 void updateLighting(LightingData& lights, float deltaTime)
 {
+	// Speed of rotation in radians per second
+	constexpr float rotationSpeed = glm::radians(10.0f);
 
+	static float totalTime = 0.0f;
+	totalTime += deltaTime;
+	lights.dirLight.direction.x = glm::cos(totalTime * rotationSpeed);
+	lights.dirLight.direction.z = glm::sin(totalTime * rotationSpeed);
 }
 
 void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime)
 {
-	// Static time variable for oscillation
-	static float t = 0.0f;
-	t += deltaTime;
-
-	// Pure rotation matrix for this frame
-	glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(60.0f * deltaTime), glm::vec3(0.0f, 1.0f, 0.0f));
-	// Calculate a pulsing scale factor between 1.0 and 2.0
-	float scaleFactor = 1.5f + 0.5f * glm::sin(t * 2.0f); // S = [1.0, 2.0]
-
-	// Reference object and extract world position
-	glm::mat4& cubeModel = objectData[0].model;
-	glm::vec3 cubePos = glm::vec3(cubeModel[3]);
-	
-	// Oscillate the cube up and down
-	float initialY = 0.0f;
-	cubePos.y = initialY + 3.0f * glm::sin(t * 0.5f);
-
-	// Uniform Scale Extraction: Calculate the length of the first basis vector (X-axis)
-	float oldScale = glm::length(glm::vec3(cubeModel[0]));
-
-	// Normalize the rotation/scale part (removes scale component)
-	cubeModel[0] = glm::vec4(glm::normalize(glm::vec3(cubeModel[0])), 0.0f);
-	cubeModel[1] = glm::vec4(glm::normalize(glm::vec3(cubeModel[1])), 0.0f);
-	cubeModel[2] = glm::vec4(glm::normalize(glm::vec3(cubeModel[2])), 0.0f);
-	cubeModel[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f); // Remove translation
-
-	// Apply pure rotation (on the left for local spin)
-	cubeModel = rotationMatrix * cubeModel;
-
-	// Restore new uniform scale
-	cubeModel[0] *= scaleFactor;
-	cubeModel[1] *= scaleFactor;
-	cubeModel[2] *= scaleFactor;
-
-	// Restore translation
-	cubeModel[3] = glm::vec4(cubePos, 1.0f);
 }
 
 std::vector<uint32_t> performFrustumCulling(std::vector<ObjectData>& objectData, const std::vector<Mesh>& allMeshes, const Frustum& frustum)
 {
+	// Visibility flag per-thread
+	std::vector<uint8_t> visibility(objectData.size(), 0);
+
+	// Parallel visibility test using ranges, as Frustum Culling is "embarrassingly parallel"
+	auto indices = std::views::iota(0u, static_cast<uint32_t>(objectData.size()));
+	std::for_each(std::execution::par_unseq, indices.begin(), indices.end(),
+		[&](uint32_t i)
+		{
+			// Transform mesh AABB to world space and check visibility against frustum
+			const auto& mesh = allMeshes[objectData[i].meshIndex];
+			AABB worldBounds = mesh.bounds.transform(objectData[i].model);
+
+			// Sphere test is slightly faster, often used for first pass
+			//bool visible = frustum.isBoxVisible(worldBounds.min, worldBounds.max);
+			bool visible = frustum.isSphereVisible(worldBounds.center(), worldBounds.radius());
+
+			objectData[i].isVisible = visible ? 1 : 0;
+			visibility[i] = visible ? 1 : 0;
+		});
+
 	std::vector<uint32_t> globalVisibleIndices;
 	globalVisibleIndices.reserve(objectData.size());
 
-	for (uint32_t i = 0; i < objectData.size(); ++i)
+	for (uint32_t i = 0; i < visibility.size(); ++i)
 	{
-		const auto& mesh = allMeshes[objectData[i].meshIndex];
-
-		// Transform mesh AABB to world space and check visibility against frustum
-		AABB worldBounds = mesh.bounds.transform(objectData[i].model);
-
-		// Sphere test is slightly faster, often used for first pass
-		//bool visible = frustum.isBoxVisible(worldBounds.min, worldBounds.max);
-		bool visible = frustum.isSphereVisible(worldBounds.center(), worldBounds.radius());
-
-		if (visible)
+		if (visibility[i])
 		{
-			objectData[i].isVisible = 1;
 			globalVisibleIndices.push_back(i);
 		}
-		else
-		{
-			objectData[i].isVisible = 0;
-		}
 	}
+
 	return globalVisibleIndices;
 }
 

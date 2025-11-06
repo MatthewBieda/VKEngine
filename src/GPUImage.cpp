@@ -45,6 +45,15 @@ GPUImage::~GPUImage()
 	{
 		vmaDestroyImage(m_context.getAllocator(), m_depthImage, m_depthImageAllocation);
 	}
+
+	for (ShadowMap& sm: m_shadowMaps)
+	{
+		vkDestroyImageView(m_context.getDevice(), sm.view, nullptr);
+		vkDestroyImageView(m_context.getDevice(), sm.debugView, nullptr);
+		vmaDestroyImage(m_context.getAllocator(), sm.image, sm.allocation);
+	}
+	vkDestroySampler(m_context.getDevice(), m_shadowSampler, nullptr);
+	m_shadowMaps.clear();
 }
 
 uint32_t GPUImage::loadTexture(const std::string& path, bool is_srgb)
@@ -390,6 +399,110 @@ void GPUImage::createCubemap(const std::array<std::string, 6>& facePaths)
 	// Reuse texture sampler
 }
 
+void GPUImage::createShadowMap(uint32_t width, uint32_t height, VkFormat format)
+{
+	ShadowMap sm{};
+	sm.format = format;
+	sm.extent = { width, height };
+
+	VkImageCreateInfo imageInfo{};
+	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageInfo.imageType = VK_IMAGE_TYPE_2D;
+	imageInfo.extent.width = width;
+	imageInfo.extent.height = height;
+	imageInfo.extent.depth = 1;
+	imageInfo.mipLevels = 1;
+	imageInfo.arrayLayers = 1;
+	imageInfo.format = format;
+	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	VmaAllocationCreateInfo allocInfo{};
+	allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+	if (vmaCreateImage(m_context.getAllocator(), &imageInfo, &allocInfo, &sm.image, &sm.allocation, nullptr) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create shadow map image");
+	}
+
+	VkCommandBuffer cmd = m_commands.beginSingleTimeCommands();
+
+	// Transition depth layout
+	VkImageAspectFlags aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
+	if (hasStencil(format))
+	{
+		aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
+	}
+
+	transitionImageLayout(cmd, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sm.image, aspect, 0, 1);
+
+	m_commands.endSingleTimeCommands(cmd);
+
+	// Create primary image view (Identity swizzle)
+	VkImageViewCreateInfo viewInfoPrimary{};
+	viewInfoPrimary.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewInfoPrimary.image = sm.image;
+	viewInfoPrimary.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	viewInfoPrimary.format = format;
+	viewInfoPrimary.subresourceRange.aspectMask = aspect;
+	viewInfoPrimary.subresourceRange.baseMipLevel = 0;
+	viewInfoPrimary.subresourceRange.levelCount = 1;
+	viewInfoPrimary.subresourceRange.baseArrayLayer = 0;
+	viewInfoPrimary.subresourceRange.layerCount = 1;
+
+	if (vkCreateImageView(m_context.getDevice(), &viewInfoPrimary, nullptr, &sm.view) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create primary shadow image view");
+	}
+	std::cout << "Shadowmap primary image view created successfully" << std::endl;
+
+	// Create debug view (grayscale swizzle)
+	VkImageViewCreateInfo viewInfoDebug = viewInfoPrimary;
+
+	viewInfoDebug.components.r = VK_COMPONENT_SWIZZLE_R;
+	viewInfoDebug.components.g = VK_COMPONENT_SWIZZLE_R;
+	viewInfoDebug.components.b = VK_COMPONENT_SWIZZLE_R;
+
+	if (vkCreateImageView(m_context.getDevice(), &viewInfoDebug, nullptr, &sm.debugView) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create debug shadow image view");
+	}
+	std::cout << "Shadowmap debug image view created successfully" << std::endl;
+
+	// Only need one sampler for all cascades
+	if (m_shadowSampler == VK_NULL_HANDLE)
+	{
+		createShadowSampler();
+	}
+
+	m_shadowMaps.push_back(sm);
+}
+
+void GPUImage::createShadowSampler()
+{
+	VkSamplerCreateInfo samplerInfo{};
+	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	samplerInfo.magFilter = VK_FILTER_LINEAR;
+	samplerInfo.minFilter = VK_FILTER_LINEAR;
+	samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+	samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+	samplerInfo.compareEnable = VK_TRUE;
+	samplerInfo.compareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	samplerInfo.minLod = 0.0f;
+	samplerInfo.maxLod = 1.0f;
+
+	if (vkCreateSampler(m_context.getDevice(), &samplerInfo, nullptr, &m_shadowSampler) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create shadow map sampler");
+	}
+}
+
 void GPUImage::recreateMSAAColorImage(uint32_t width, uint32_t height, VkFormat colorFormat)
 {
 	cleanupMSAAResources();
@@ -522,6 +635,16 @@ void GPUImage::transitionImageLayout(VkCommandBuffer cmd, VkImageLayout oldLayou
 		dstStage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
 		srcAccess = VK_ACCESS_2_NONE;
 		dstAccess = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+	}
+	else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+	{
+		// Source: Nothing to wait for, but we need to start the pipeline
+		srcStage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+		srcAccess = VK_ACCESS_2_NONE;
+
+		// Destination: Will be read by a fragment shader
+		dstStage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+		dstAccess = VK_ACCESS_2_SHADER_READ_BIT;
 	}
 	else
 	{

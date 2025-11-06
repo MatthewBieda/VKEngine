@@ -5,6 +5,17 @@
 
 #include <string>
 
+struct ShadowMap
+{
+	VkImage image = VK_NULL_HANDLE;
+	VmaAllocation allocation = VK_NULL_HANDLE;
+	VkFormat format = VK_FORMAT_UNDEFINED;
+	VkExtent2D extent{};
+
+	VkImageView view = VK_NULL_HANDLE; // Primary view (for Attachment)
+	VkImageView debugView = VK_NULL_HANDLE; // Debug view (for ImGui sampling)
+};
+
 class Commands;
 
 class GPUImage
@@ -24,6 +35,11 @@ public:
 	void createDepthImage(uint32_t width, uint32_t height);
 	void createMSAAColorImage(uint32_t width, uint32_t height, VkFormat colorFormat);
 	void createCubemap(const std::array<std::string, 6>& facePaths);
+
+	void createShadowMap(uint32_t width, uint32_t height, VkFormat = VK_FORMAT_D32_SFLOAT);
+	void createShadowSampler();
+	VkSampler getShadowSampler() const { return m_shadowSampler; }
+	const std::vector<ShadowMap>& getShadowMaps() const { return m_shadowMaps; }
 
 	VkImageView getDepthImageView() const { return m_depthImageView; }
 	VkImage getDepthImage() const { return m_depthImage; }
@@ -54,6 +70,9 @@ private:
 	std::vector<Texture> m_textures;
 	std::vector<VkImageView> m_textureViews;
 	VkSampler m_sharedTextureSampler = VK_NULL_HANDLE;
+
+	std::vector<ShadowMap> m_shadowMaps; // For cascaded shadow maps
+	VkSampler m_shadowSampler = VK_NULL_HANDLE;
 
 	// Helper to load a single texture
 	GPUImage::Texture createTextureImageFromFile(const std::string& path, bool is_srgb);

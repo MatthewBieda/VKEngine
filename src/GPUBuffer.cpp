@@ -22,6 +22,7 @@ GPUBuffer::~GPUBuffer()
 	vmaDestroyBuffer(m_context.getAllocator(), m_indexBuffer, m_indexAllocation);
 	vmaDestroyBuffer(m_context.getAllocator(), m_objectBuffer, m_objectAllocation);
 	vmaDestroyBuffer(m_context.getAllocator(), m_lightingBuffer, m_lightingAllocation);
+	vmaDestroyBuffer(m_context.getAllocator(), m_cascadeBuffer, m_cascadeAllocation);
 	vmaDestroyBuffer(m_context.getAllocator(), m_visibleIndexBuffer, m_visibleIndexAllocation);
 	vmaDestroyBuffer(m_context.getAllocator(), m_debugVertexBuffer, m_debugVertexAllocation);
 }
@@ -46,6 +47,17 @@ void GPUBuffer::updateLightingBuffer(const void* data, size_t size, uint32_t cur
 
 	VkDeviceSize offset = currentFrame * m_alignedLightingSize;
 	memcpy((char*)m_lightingBufferMapped + offset, data, size);
+}
+
+void GPUBuffer::updateCascadeBuffer(const void* data, size_t size, uint32_t currentFrame)
+{
+	if (size > m_alignedCascadeSize)
+	{
+		throw std::runtime_error("Cascade buffer overflow!");
+	}
+
+	VkDeviceSize offset = currentFrame * m_alignedCascadeSize;
+	memcpy((char*)m_cascadeBufferMapped + offset, data, size);
 }
 
 void GPUBuffer::updateVisibleIndexBuffer(const void* data, size_t size, uint32_t currentFrame)
@@ -219,6 +231,42 @@ void GPUBuffer::createLightingBuffer(VkDeviceSize lightingBufferSize)
 
 	nameObject(m_context.getDevice(), m_lightingBuffer, "LightingBuffer_SSBO");
 	std::cout << "Lighting dynamic SSBO created successfully" << std::endl;
+}
+
+void GPUBuffer::createCascadeBuffer(VkDeviceSize cascadeBufferSize)
+{
+	VkPhysicalDeviceProperties props;
+	vkGetPhysicalDeviceProperties(m_context.getPhysicalDevice(), &props);
+
+	VkDeviceSize alignment = props.limits.minUniformBufferOffsetAlignment;
+	m_cascadeBufferSize = cascadeBufferSize;
+
+	// Round size up to the next multiple of alignment
+	VkDeviceSize alignedCascadeSize = (m_cascadeBufferSize + alignment - 1) & ~(alignment - 1);
+	m_alignedCascadeSize = alignedCascadeSize;
+
+	VkBufferCreateInfo bufferInfo{};
+	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferInfo.size = m_alignedCascadeSize * m_maxFramesInFlight;
+	bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	VmaAllocationCreateInfo allocInfo{};
+	allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+	allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+	if (vmaCreateBuffer(m_context.getAllocator(), &bufferInfo, &allocInfo, &m_cascadeBuffer, &m_cascadeAllocation, nullptr) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create cascade UBO");
+	}
+
+	// Get mapped pointer
+	VmaAllocationInfo allocInfoDetails{};
+	vmaGetAllocationInfo(m_context.getAllocator(), m_cascadeAllocation, &allocInfoDetails);
+	m_cascadeBufferMapped = allocInfoDetails.pMappedData;
+
+	nameObject(m_context.getDevice(), m_cascadeBuffer, "CascadeBuffer_UBO");
+	std::cout << "Cascade dynamic UBO created successfully" << std::endl;
 }
 
 void GPUBuffer::createObjectBuffer(size_t maxObjects)

@@ -10,3 +10,5 @@ glslc skybox.frag -o skyboxfrag.spv
 
 glslc debug.vert -o debug_vert.spv
 glslc debug.frag -o debug_frag.spv
+
+glslc shadow.vert -o shadow_vert.spv

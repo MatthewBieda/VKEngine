@@ -82,7 +82,7 @@ void ImGuiOverlay::init(GLFWwindow* window, VulkanContext& context, DescriptorMa
 	info.QueueFamily = context.getGraphicsQueueFamilyIndex();
 	info.Queue = context.getGraphicsQueue();
 	info.PipelineCache = VK_NULL_HANDLE;
-	info.DescriptorPool = descriptors.getDescriptorPool();
+	info.DescriptorPoolSize = 5; // Use backend pools instead of mine
 	info.RenderPass = VK_NULL_HANDLE;
 	info.Subpass = 0;
 	info.MinImageCount = imageCount;
@@ -154,31 +154,117 @@ void ImGuiOverlay::drawUI()
 	// Control panel
 	ImGui::Begin("VKEngine Controls");
 
-	ImGui::Separator();
+	if (ImGui::CollapsingHeader("Global Rendering"))
+	{
+		ImGui::Checkbox("Enable Depth Test", &enableDepthTest);
+		ImGui::Checkbox("Enable Wireframe", &enableWireframe);
+		ImGui::Checkbox("Enable Normal Maps", &enableNormalMaps);
+	}
 
-	ImGui::Checkbox("Enable Depth Test", &enableDepthTest);
-	ImGui::Checkbox("Enable Wireframe", &enableWireframe);
-	ImGui::Checkbox("Enable Normal Maps", &enableNormalMaps);
+	if (ImGui::CollapsingHeader("Lighting"))
+	{
+		ImGui::Checkbox("Enable Directional Light", &enableDirectionalLight);
+		ImGui::Checkbox("Enable Point Lights", &enablePointLights);
+	}
+
+	if (ImGui::CollapsingHeader("Debug"))
+	{
+		ImGui::Checkbox("Show Mesh AABB (Red)", &showMeshAABB);
+		ImGui::Checkbox("Show Submesh AABB (Green)", &showSubmeshAABB);
+		ImGui::Checkbox("Freeze Camera Frustum", &freezeFrustum);
+		ImGui::Checkbox("Show Cascade Colors", &showCascadeColors);
+	}
+
+	if (ImGui::CollapsingHeader("Render Targets"))
+	{
+		ImGui::Checkbox("Show Shadow Map", &showShadowMap);
+	}
+
+	if (ImGui::CollapsingHeader("Shadows"))
+	{
+		ImGui::SliderFloat("Lambda", &cascadeLambda, 0.0f, 1.0f, "%.2f");
+		ImGui::Text("0.0 = Uniform, 1.0 = Logarithmic");
+	}
 
 	ImGui::Separator();
-	ImGui::Text("Lighting");
-	ImGui::Checkbox("Enable Directional Light", &enableDirectionalLight);
-	ImGui::Checkbox("Enable Point Lights", &enablePointLights);
-
-	ImGui::Separator();
+	ImGui::Text("Metrics");
 	ImGui::Checkbox("Show Metrics", &showMetrics);
 	if (showMetrics)
 	{
 		ImGui::ShowMetricsWindow(&showMetrics);
 	}
 
-	ImGui::Checkbox("Freeze Camera Frustum", &freezeFrustum);
+	ImGui::End();
+}
 
-	ImGui::Separator();
-	ImGui::Text("Debug Visualization");
-	ImGui::Checkbox("Show Mesh AABB (Red)", &showMeshAABB);
-	ImGui::Checkbox("Show Submesh AABB (Green)", &showSubmeshAABB);
+VkDescriptorSet ImGuiOverlay::createImGuiTextureDescriptor(VkImageView imageView, VkSampler sampler)
+{
+	VkDescriptorSet descriptorSet = ImGui_ImplVulkan_AddTexture(sampler, imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	return descriptorSet;
+}
 
+void ImGuiOverlay::drawShadowMapVisualization(
+	const std::array<VkDescriptorSet, 4>& shadowMapDescriptorSets,
+	const std::vector<ShadowCascades::CascadeData>& cascades) const
+{
+	// 1. Check if the window should be drawn
+	if (!showShadowMap || !m_initialized)
+	{
+		return;
+	}
+	ImGui::Begin("Shadow Maps", &showShadowMap);
+
+	constexpr float SHADOW_MAP_SIZE = 4096.0f;
+
+	// Get available content region width
+	float windowWidth = ImGui::GetContentRegionAvail().x;
+
+	// Determine the number of cascades per row
+	constexpr int CASCADES_PER_ROW = 2;
+
+	// Calculate the size for each image, accounting for padding/spacing
+	// ImGui::GetStyle().ItemSpacing.x is the space added by ImGui::SameLine()
+	float padding = ImGui::GetStyle().ItemSpacing.x * (CASCADES_PER_ROW - 1);
+	float imageSize = (windowWidth - padding) / CASCADES_PER_ROW;
+
+	// Enforce a minimum size for readability
+	imageSize = glm::max(imageSize, 100.0f);
+
+	for (int i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
+	{
+		// Draw each cascade texture
+		ImGui::BeginGroup(); // Group text and image together
+
+		// Use a specific color for the text to match the common debug colors
+		ImVec4 color = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+		if (i == 0) color = ImVec4(1.0f, 0.5f, 0.5f, 1.0f); // Red
+		if (i == 1) color = ImVec4(0.5f, 1.0f, 0.5f, 1.0f); // Green
+		if (i == 2) color = ImVec4(0.5f, 0.5f, 1.0f, 1.0f); // Blue
+		if (i == 3) color = ImVec4(1.0f, 1.0f, 0.5f, 1.0f); // Yellow
+
+		ImGui::TextColored(color, "Cascade %d", i);
+
+		// Use the constant calculated size for a square image
+		ImGui::Image((ImTextureID)shadowMapDescriptorSets[i], ImVec2(imageSize, imageSize));
+
+		// Calculate range and resolution per meter
+		float range = cascades[i].farDepth - cascades[i].nearDepth;
+		float pixelsPerMeter = SHADOW_MAP_SIZE / range;
+
+		ImGui::Text("Range: %.1fm - %.1fm", cascades[i].nearDepth, cascades[i].farDepth);
+		ImGui::Text("Depth: %.1fm", range);
+		ImGui::TextColored(color, "~%.0f px/m", pixelsPerMeter);
+
+		ImGui::EndGroup();
+
+		// If not the last cascade and it's an odd index (0, 2, etc.), put the next one on the same line
+		if ((i + 1) % CASCADES_PER_ROW != 0 && i < ShadowCascades::NUM_CASCADES - 1)
+		{
+			ImGui::SameLine();
+		}
+	}
+
+	// 3. End the window
 	ImGui::End();
 }
 
