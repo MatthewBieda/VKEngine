@@ -174,10 +174,37 @@ void main() {
         alpha = texSample.a;
     }
 
-    // Alpha test
-    if (pc.enableAlphaTest != 0 && alpha < 0.8)
+    // Alpha to Coverage (with Sharpening & Distance fade prevention)
+    if (pc.enableAlphaTest != 0)
     {
-        discard;
+        // Source: https://bgolus.medium.com/anti-aliased-alpha-test-the-esoteric-alpha-to-coverage-8b177335ae4f
+
+        const float ALPHA_CUTOFF = 0.8;
+        const float MIP_SCALE = 0.25;
+
+        // Get texture size for mip calculation
+        vec2 texSize = vec2(textureSize(nonuniformEXT(tex[pc.diffuseTextureIndex]), 0));
+
+        // Calculate mip level (multiply UVs by texture dimensions)
+        vec2 dx = dFdx(fragTexCoord * texSize);
+        vec2 dy = dFdy(fragTexCoord * texSize);
+        float delta_max_sqr = max(dot(dx, dx), dot(dy, dy));
+        float mipLevel = max(0.0, 0.5 * log2(delta_max_sqr));
+
+        // Scale alpha by mip level to compensate for mipmap averaging
+        alpha *= 1.0 + mipLevel * MIP_SCALE;
+
+        // Compute the new, anti-aliased alpha value
+        // fwidth(sampledAlpha) measures how much the alpha changes across the pixel.
+        // Dividing by this scales the change to be one pixel wide.
+        float derivative = max(fwidth(alpha), 0.0001);
+
+        // Apply smooth step function equivalent:
+        // The range [ALPHA_CUTOFF - derivative, ALPHA_CUTOFF + derivative]
+        // is where the alpha smoothly transitions from 0.0 to 1.0.
+        // The author's formula simplifies this into a linear remapping:
+        // (a - cutoff) / derivative + 0.5
+        alpha = clamp((alpha - ALPHA_CUTOFF) / derivative + 0.5, 0.0, 1.0);
     }
 
     vec3 ambient = 0.05 * albedo;
@@ -280,5 +307,5 @@ void main() {
     }
     
     vec3 finalColor = ambient + diffuse + specular + reflection;
-    outColor = vec4(finalColor, pc.enableAlphaTest != 0 ? 1.0 : alpha);
+    outColor = vec4(finalColor, alpha);
 }
