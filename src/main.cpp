@@ -314,6 +314,7 @@ int main()
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
 	// Shadow pass
+	std::array<VkImageMemoryBarrier2, ShadowCascades::NUM_CASCADES> shaderToDepthBarriers{};
 	VkImageMemoryBarrier2 shaderToDepthBarrier{};
 	shaderToDepthBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
 	shaderToDepthBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
@@ -330,10 +331,16 @@ int main()
 	shaderToDepthBarrier.subresourceRange.baseArrayLayer = 0;
 	shaderToDepthBarrier.subresourceRange.layerCount = 1;
 
-	VkDependencyInfo shaderToDepthDep{};
-	shaderToDepthDep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-	shaderToDepthDep.imageMemoryBarrierCount = 1;
-	shaderToDepthDep.pImageMemoryBarriers = &shaderToDepthBarrier;
+	VkDependencyInfo shaderToDepthDepInfo{};
+	shaderToDepthDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+
+	for (uint32_t i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
+	{
+		shaderToDepthBarrier.image = image.getShadowMaps()[i].image;
+		shaderToDepthBarriers[i] = shaderToDepthBarrier;
+	}
+	shaderToDepthDepInfo.imageMemoryBarrierCount = static_cast<uint32_t>(shaderToDepthBarriers.size());
+	shaderToDepthDepInfo.pImageMemoryBarriers = shaderToDepthBarriers.data();
 
 	VkRenderingAttachmentInfo shadowDepthAttachment{};
 	shadowDepthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -360,6 +367,7 @@ int main()
 
 	VkDescriptorSet set = descriptors.getDescriptorSet();
 
+	std::array<VkImageMemoryBarrier2, ShadowCascades::NUM_CASCADES> depthToShaderBarriers{};
 	VkImageMemoryBarrier2 depthToShaderBarrier{};
 	depthToShaderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
 	depthToShaderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
@@ -376,12 +384,18 @@ int main()
 	depthToShaderBarrier.subresourceRange.baseArrayLayer = 0;
 	depthToShaderBarrier.subresourceRange.layerCount = 1;
 
-	VkDependencyInfo depthToShaderDep{};
-	depthToShaderDep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-	depthToShaderDep.imageMemoryBarrierCount = 1;
-	depthToShaderDep.pImageMemoryBarriers = &depthToShaderBarrier;
+	VkDependencyInfo depthToShaderDepInfo{};
+	depthToShaderDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
 
-	// Opaque, skybox, transparency, debug passes
+	for (uint32_t i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
+	{
+		depthToShaderBarrier.image = image.getShadowMaps()[i].image;
+		depthToShaderBarriers[i] = depthToShaderBarrier;
+	}
+	depthToShaderDepInfo.imageMemoryBarrierCount = static_cast<uint32_t>(depthToShaderBarriers.size());
+	depthToShaderDepInfo.pImageMemoryBarriers = depthToShaderBarriers.data();
+
+	// Core render loop
 	VkImageMemoryBarrier2 preRenderBarrier{};
 	preRenderBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
 	preRenderBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -607,26 +621,25 @@ int main()
 			static_cast<uint32_t>(currentFrame * buffer.getAlignedCascadeSize()),
 		};
 
+		// -- BEGIN SHADOW RENDER PASS --
+		vkCmdBeginDebugUtilsLabelEXT(cmd, &shadowPassLabel);
+
 		shadowPipeline.setCullMode(cmd, VK_CULL_MODE_BACK_BIT);
 		shadowPipeline.setDepthTest(cmd, VK_TRUE);
 		shadowPipeline.setPolygonMode(cmd, VK_POLYGON_MODE_FILL);
 
-		// -- SHADOW RENDER PASS --
-		vkCmdBeginDebugUtilsLabelEXT(cmd, &shadowPassLabel);
+		// Batch transition all cascades to depth attachment, render cascades
+		vkCmdPipelineBarrier2(cmd, &shaderToDepthDepInfo);
 		for (uint32_t i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
 		{
 			const auto& cascade = cascades[i];
 			shadowPC.lightViewProj = cascade.viewProj;
 
-			// 1. Transition shadowmap to attachment optimal
-			shaderToDepthBarrier.image = image.getShadowMaps()[i].image;
-			vkCmdPipelineBarrier2(cmd, &shaderToDepthDep);
-
-			// 2. Shadow Pass rendering info
+			// Shadow Pass rendering info
 			shadowDepthAttachment.imageView = image.getShadowMaps()[i].view;
 			shadowRenderingInfo.renderArea.extent = image.getShadowMaps()[i].extent;
 
-			// 3. Render into shadow map
+			// Render into shadow map
 			vkCmdBeginRendering(cmd, &shadowRenderingInfo);
 			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowPipeline.getPipeline());
 
@@ -667,14 +680,14 @@ int main()
 				}
 			}
 			vkCmdEndRendering(cmd);
-
-			// 4. Transition shadow map to shader read
-			depthToShaderBarrier.image = image.getShadowMaps()[i].image;
-			vkCmdPipelineBarrier2(cmd, &depthToShaderDep);
 		}
-		vkCmdEndDebugUtilsLabelEXT(cmd);
+		// Batch transition all cascades back to shader read
+		vkCmdPipelineBarrier2(cmd, &depthToShaderDepInfo);
 
-		// -- OPAQUE RENDER PASS --
+		vkCmdEndDebugUtilsLabelEXT(cmd);
+		// -- END SHADOW RENDER PASS --
+
+		// -- BEGIN OPAQUE RENDER PASS --
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &opaquePassLabel);
 
 		// Transition swapchain to attachment
@@ -755,8 +768,9 @@ int main()
 			}
 		}
 		vkCmdEndDebugUtilsLabelEXT(cmd);
+		// -- END OPAQUE RENDER PASS --
 
-		// -- SKYBOX RENDER PASS --
+		// -- BEGIN SKYBOX RENDER PASS --
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &skyboxPassLabel);
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeline.getPipeline());
 		skyboxPipeline.setViewport(cmd, viewport);
@@ -846,8 +860,9 @@ int main()
 			vkCmdDrawIndexed(cmd, drawCmd.indexCount, 1, drawCmd.firstIndex, drawCmd.vertexOffset, visibleIndex);
 		}
 		vkCmdEndDebugUtilsLabelEXT(cmd);
+		// -- END SKYBOX RENDER PASS --
 
-		// -- DEBUG RENDER PASS --
+		// -- BEGIN DEBUG RENDER PASS --
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &debugPassLabel);
 		if (imgui.showMeshAABB || imgui.showSubmeshAABB)
 		{
@@ -881,8 +896,9 @@ int main()
 		}
 		vkCmdEndRendering(cmd);
 		vkCmdEndDebugUtilsLabelEXT(cmd);
+		// -- END DEBUG RENDER PASS --
 
-		// -- UI RENDER PASS --
+		// -- BEGIN UI RENDER PASS --
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &imguiPassLabel);
 		imgui.drawShadowMapVisualization(shadowMapImGuiDescriptors, cascades);
 		imgui.render();
@@ -902,6 +918,7 @@ int main()
 		vkCmdPipelineBarrier2(cmd, &postDepInfo);
 
 		vkEndCommandBuffer(cmd);
+		// -- END UI RENDER PASS --
 
 		// Submit
 		cmdBufferInfo.commandBuffer = cmd;
