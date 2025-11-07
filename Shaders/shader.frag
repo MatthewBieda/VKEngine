@@ -88,8 +88,10 @@ float SampleCascade(int cascadeIndex, vec4 lightSpacePos)
     projCoords = vec3(projCoords.xy * 0.5 + 0.5, projCoords.z);
 
     // Return sentinel if outside the cascade frustum
-    if (projCoords.z > 1.0 || projCoords.z < 0.0)
-        return -1.0;
+    if (projCoords.x < 0.0 || projCoords.x > 1.0 || projCoords.y < 0.0 || projCoords.y > 1.0 || projCoords.z < 0.0 || projCoords.z > 1.0)
+    {
+        return -1.0;        
+    }
 
     // Current fragment depth (Z-value in light space)
     float currentDepth = projCoords.z;
@@ -132,8 +134,9 @@ float ShadowCalculation(vec4 lightSpacePos[4], float viewDepth)
 
     // If still outside (last cascade), treat as fully lit
     if (shadow < 0.0)
+    {
         shadow = 1.0;
-
+    }
     return shadow;
 }
 
