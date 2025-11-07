@@ -20,15 +20,23 @@ layout(set = 0, binding = 4) readonly buffer VisibleIndexData
 	uint visibleIndices[];
 } visibleIndexData;
 
-layout (location = 0) in vec3 inPosition;
-
 layout(push_constant) uniform PushConstants
 {
 	mat4 lightViewProj; // light's view-projection matrix
 } pc;
 
+layout(location = 0) in vec3 inPosition;
+layout(location = 1) in vec3 inNormal;
+layout(location = 2) in vec2 inTexCoord;
+layout(location = 3) in vec4 inTangent; // Tangent vector (includes handedness in .w)
+
+layout(location = 0) out vec2 fragTexCoord;
+
 void main()
 {
+	// 0: Pass through texture coords
+	fragTexCoord = inTexCoord;
+
 	// 1. Get the local index of the instance being drawn
 	uint filteredInstanceIndex = gl_InstanceIndex;
 

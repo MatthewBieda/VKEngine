@@ -6,7 +6,6 @@
 #include "DescriptorManager.hpp"
 #include "Vertex.hpp"
 #include "DebugVertex.hpp"
-#include "ShadowVertex.hpp"
 
 #include <fstream>
 #include <iostream>
@@ -130,15 +129,12 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 
 	// Fixed-function state (vertex input, input assembly, viewport, rasterizer, multisample, color blend)
 
-	// Declare attributes and bindings for the debug and shadow pipeline
+	// Declare attributes and bindings for the main and debug passes
 	VkVertexInputBindingDescription bindingDescription = Vertex::getBindingDescription();
 	std::array<VkVertexInputAttributeDescription, 4> attributeDescriptions = Vertex::getAttributeDescription();
 
 	VkVertexInputBindingDescription debugBinding;
 	std::array<VkVertexInputAttributeDescription, 2> debugAttributes;
-
-	VkVertexInputBindingDescription shadowBinding;
-	std::array<VkVertexInputAttributeDescription, 1> shadowAttributes;
 
 	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 	vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -197,12 +193,6 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 	pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 	pushConstantRange.offset = 0;
 	pushConstantRange.size = pushConstantsSize;
-
-	if (type == PipelineType::ShadowMap)
-	{
-		// Shadow pass only uses Vertex shader
-		pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-	}
 
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -313,15 +303,6 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 			break;
 
 		case PipelineType::ShadowMap:
-			// Retrieve shadow vertex data
-			shadowBinding = ShadowVertex::getBindingDescription();
-			shadowAttributes = ShadowVertex::getAttributeDescription();
-
-			vertexInputInfo.vertexBindingDescriptionCount = 1;
-			vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-			vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(shadowAttributes.size());
-			vertexInputInfo.pVertexAttributeDescriptions = shadowAttributes.data();
-
 			// Depth-only rendering (no color attachment)
 			colorBlendInfo.attachmentCount = 0;
 			colorBlendInfo.pAttachments = nullptr;
@@ -340,6 +321,7 @@ void Pipeline::createPipeline(const std::string& vertPath, const std::string& fr
 
 			// No MSAA for shadow maps
 			multisamplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+			multisamplingInfo.alphaToCoverageEnable = VK_FALSE;
 
 			// Adjust dynamic rendering info
 			renderingInfo.colorAttachmentCount = 0;

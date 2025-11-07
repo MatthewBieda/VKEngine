@@ -195,6 +195,7 @@
     <None Include="..\Shaders\debug.vert" />
     <None Include="..\Shaders\shader.frag" />
     <None Include="..\Shaders\shader.vert" />
+    <None Include="..\Shaders\shadow.frag" />
     <None Include="..\Shaders\shadow.vert" />
     <None Include="..\Shaders\skybox.frag" />
     <None Include="..\Shaders\skybox.vert" />
@@ -212,7 +213,6 @@
     <ClInclude Include="..\Include\Lights.hpp" />
     <ClInclude Include="..\Include\Pipeline.hpp" />
     <ClInclude Include="..\Include\ShadowCascades.hpp" />
-    <ClInclude Include="..\Include\ShadowVertex.hpp" />
     <ClInclude Include="..\Include\Swapchain.hpp" />
     <ClInclude Include="..\Include\Sync.hpp" />
     <ClInclude Include="..\Include\TangentGen.hpp" />

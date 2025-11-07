@@ -78,6 +78,10 @@ struct DebugPushConstants
 
 struct ShadowPushConstants {
 	glm::mat4 lightViewProj;
+	uint32_t enableAlphaTest;
+	uint32_t diffuseTextureIndex;
+	uint32_t padding1;
+	uint32_t padding2;
 } shadowPC;
 
 struct LightingData
@@ -280,7 +284,7 @@ int main()
 	Pipeline skyboxPipeline(context, swapchain, descriptors, sizeof(PushConstants), "../Shaders/skyboxvert.spv", "../Shaders/skyboxfrag.spv", image.getDepthFormat(), PipelineType::Skybox);
 	Pipeline transparentPipeline(context, swapchain, descriptors, sizeof(PushConstants), "../Shaders/vert.spv", "../Shaders/frag.spv", image.getDepthFormat(), PipelineType::Transparent);
 	Pipeline debugPipeline(context, swapchain, descriptors, sizeof(DebugPushConstants), "../Shaders/debug_vert.spv", "../Shaders/debug_frag.spv", image.getDepthFormat(), PipelineType::DebugAABB);
-	Pipeline shadowPipeline(context, swapchain, descriptors, sizeof(ShadowPushConstants), "../Shaders/shadow_vert.spv", "", image.getDepthFormat(), PipelineType::ShadowMap);
+	Pipeline shadowPipeline(context, swapchain, descriptors, sizeof(ShadowPushConstants), "../Shaders/shadow_vert.spv", "../Shaders/shadow_frag.spv", image.getDepthFormat(), PipelineType::ShadowMap);
 
 	// Setup syncronization and UI
 	Sync sync(context, swapchain, MAX_FRAMES_IN_FLIGHT);
@@ -501,7 +505,7 @@ int main()
 	Frustum frozenFrustum;
 
 	// Begin background music
-	//gSoLoud.play(gWave, 0.3f, 0.0f, 0.0);
+	// gSoLoud.play(gWave, 0.3f, 0.0f, 0.0);
 
 	ShadowCascades shadowCascades{};
 	double lastTime{};
@@ -595,6 +599,18 @@ int main()
 		VkCommandBuffer cmd = commands.getCommandBuffer(currentFrame);
 		vkBeginCommandBuffer(cmd, &beginInfo);
 
+		// Calculate dynamic offset for current frame
+		std::array<uint32_t, 4> dynamicOffsets = {
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedObjectSize()),
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize()),
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedVisibleIndexBufferSize()),
+			static_cast<uint32_t>(currentFrame * buffer.getAlignedCascadeSize()),
+		};
+
+		shadowPipeline.setCullMode(cmd, VK_CULL_MODE_BACK_BIT);
+		shadowPipeline.setDepthTest(cmd, VK_TRUE);
+		shadowPipeline.setPolygonMode(cmd, VK_POLYGON_MODE_FILL);
+
 		// -- SHADOW RENDER PASS --
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &shadowPassLabel);
 		for (uint32_t i = 0; i < ShadowCascades::NUM_CASCADES; ++i)
@@ -620,19 +636,6 @@ int main()
 
 			shadowPipeline.setViewport(cmd, shadowViewport);
 			shadowPipeline.setScissor(cmd, shadowScissor);
-			shadowPipeline.setCullMode(cmd, VK_CULL_MODE_BACK_BIT);
-			shadowPipeline.setDepthTest(cmd, VK_TRUE);
-			shadowPipeline.setPolygonMode(cmd, VK_POLYGON_MODE_FILL);
-
-			vkCmdPushConstants(cmd, shadowPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ShadowPushConstants), &shadowPC);
-
-			// Calculate dynamic offset for current frame
-			std::array<uint32_t, 4> dynamicOffsets = {
-				static_cast<uint32_t>(currentFrame * buffer.getAlignedObjectSize()),
-				static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize()),
-				static_cast<uint32_t>(currentFrame * buffer.getAlignedVisibleIndexBufferSize()),
-				static_cast<uint32_t>(currentFrame * buffer.getAlignedCascadeSize()),
-			};
 
 			vkCmdBindDescriptorSets(cmd,
 				VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -647,12 +650,19 @@ int main()
 			vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
 			vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
-			// Draw opaque objects only (no transparent/alpha-tested for shadows)
+			// Draw opaque objects only
 			for (uint32_t matIdx = 0; matIdx < drawLists.opaque.size(); ++matIdx)
 			{
 				const std::vector<DrawCommand>& drawCmds = drawLists.opaque[matIdx];
 				for (const DrawCommand& drawCmd : drawCmds)
 				{
+					shadowPC.diffuseTextureIndex = drawCmd.material.albedoTexture;
+					shadowPC.enableAlphaTest = drawCmd.material.alphatest;
+
+					vkCmdPushConstants(cmd, shadowPipeline.getLayout(),
+						VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+						0, sizeof(ShadowPushConstants), &shadowPC);
+
 					vkCmdDrawIndexed(cmd, drawCmd.indexCount, drawCmd.instanceCount, drawCmd.firstIndex, drawCmd.vertexOffset, drawCmd.firstInstance);
 				}
 			}
@@ -701,13 +711,6 @@ int main()
 		VkDeviceSize offsets[] = { 0 };
 		vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
 		vkCmdBindIndexBuffer(cmd, buffer.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
-
-		std::array<uint32_t, 4> dynamicOffsets = {
-			static_cast<uint32_t>(currentFrame * buffer.getAlignedObjectSize()),
-			static_cast<uint32_t>(currentFrame * buffer.getAlignedLightingSize()),
-			static_cast<uint32_t>(currentFrame * buffer.getAlignedVisibleIndexBufferSize()),
-			static_cast<uint32_t>(currentFrame * buffer.getAlignedCascadeSize()),
-		};
 
 		vkCmdBindDescriptorSets(cmd, 
 			VK_PIPELINE_BIND_POINT_GRAPHICS, 
