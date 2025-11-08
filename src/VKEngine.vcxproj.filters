@@ -19,6 +19,9 @@
     <Filter Include="Source Files\MikkTSpace">
       <UniqueIdentifier>{a7ed4965-8cb3-42e0-975c-feec0fd06b13}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Scenes">
+      <UniqueIdentifier>{ed0432b7-89e6-452f-aeb8-0f7905f04b2e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -149,6 +152,12 @@
     </ClCompile>
     <ClCompile Include="ShadowCascades.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Scenes\CSMDemo.hpp">
+      <Filter>Scenes</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Scenes\SponzaDemo.hpp">
+      <Filter>Scenes</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

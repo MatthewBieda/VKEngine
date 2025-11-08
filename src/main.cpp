@@ -198,14 +198,19 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass);
 
 enum class MeshType
 {
+	LightCaster,
+	Sponza,
+	Grass,
+	GlassWindow,
 	GroundPlane,
 	Cube,
 	BrickWall,
 	SnakeStatue
 };
 
-void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData);
-void setupLighting(GPUBuffer& buffer, LightingData& lights);
+void setupSceneObjects(std::vector<ObjectData>& objectData);
+void setupLighting(LightingData& lights);
+
 void updateLighting(LightingData& lights, float deltaTime);
 void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime);
 
@@ -226,6 +231,11 @@ void generateDebugGeometry(std::vector<DebugVertex>& debugVertices,
 std::vector<DebugVertex> generateAABBLines(const AABB& aabb, const glm::vec4& color);
 
 void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GPUImage& image);
+
+// Scene Selection (Simply uncomment your desired scene, in V2 these files will be a JSON scene representation)
+
+#include "../Scenes/CSMDemo.hpp"
+//#include "../Scenes/SponzaDemo.hpp"
 
 int main()
 {
@@ -249,7 +259,6 @@ int main()
 		image.createShadowMap(SHADOW_MAP_RES, SHADOW_MAP_RES);
 	}
 
-	// Load textures and models
 	std::array<std::string, 6> skyBoxFaces = {
 		"../Textures/Skyboxes/YokohamaCity/posx.jpg",
 		"../Textures/Skyboxes/YokohamaCity/negx.jpg",
@@ -260,11 +269,11 @@ int main()
 	};
 	image.createCubemap(skyBoxFaces);
 
-	//uint32_t lightCaster = loadModel("../Models/LightCaster/lightCaster.obj", image);
-	//uint32_t sponza = loadModel("../Models/SponzaSeparated/sponzaAABB.obj", image);
-	//uint32_t alphaTestedGrass = loadModel("../Models/Grass/untitled.obj", image);
-	//uint32_t glassWindow = loadModel("../Models/GlassWindow/glassWindow.obj", image);
-
+	// Load all models avaiable for use and their materials 
+	uint32_t lightCaster = loadModel("../Models/LightCaster/lightCaster.obj", image);
+	uint32_t sponza = loadModel("../Models/SponzaSeparated/sponzaAABB.obj", image);
+	uint32_t alphaTestedGrass = loadModel("../Models/Grass/untitled.obj", image);
+	uint32_t glassWindow = loadModel("../Models/GlassWindow/glassWindow.obj", image);
 	uint32_t groundPlane = loadModel("../Models/GroundPlane/groundPlane.obj", image);
 	uint32_t cube = loadModel("../Models/Cube/cube.obj", image);
 	uint32_t brickWall = loadModel("../Models/BrickWall/BrickWall.obj", image);
@@ -272,8 +281,16 @@ int main()
 
 	// Create buffers and populate scene
 	GPUBuffer buffer(context, commands, allVertices, allIndices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
-	setupLighting(buffer, lights);
-	setupSceneObjects(buffer, objectData);
+
+	setupLighting(lights);
+	buffer.createLightingBuffer(sizeof(LightingData));
+	buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);
+
+	setupSceneObjects(objectData);
+	buffer.createObjectBuffer(objectData.size());
+	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData), currentFrame);
+
+	buffer.createVisibleIndexBuffer(objectData.size());
 	buffer.createCascadeBuffer(sizeof(CascadeData));
 
 	// Setup descriptors and pipelines
@@ -1148,84 +1165,6 @@ uint32_t loadModel(const std::string& modelPath, GPUImage& imageClass)
 		<< " submeshes" << std::endl;
 
 	return meshIndex;
-}
-
-void setupSceneObjects(GPUBuffer& buffer, std::vector<ObjectData>& objectData)
-{
-	glm::vec3 pos{};
-	glm::mat4 model{};
-	uint32_t groundPlaneIndex{};
-	uint32_t SnakeStatueIndex{};
-
-	// Snake Statues - instanced grid on planes
-	groundPlaneIndex = static_cast<uint32_t>(MeshType::GroundPlane);
-	SnakeStatueIndex = static_cast<uint32_t>(MeshType::SnakeStatue);
-
-	const int gridCount = 5;     // 5x5 = 25 statues
-	const float spacing = 25.0f;  // distance between each statue
-
-	for (int x = 0; x < gridCount; ++x)
-	{
-		for (int z = 0; z < gridCount; ++z)
-		{
-			glm::vec3 offset = {
-				(x - gridCount / 2) * spacing,
-				0.0f,
-				(z - gridCount / 2) * spacing
-			};
-
-			model = glm::translate(glm::mat4(1.0f), offset);
-
-			// Random rotation
-			float randomRot = glm::radians(static_cast<float>(rand() % 360));
-			model = glm::rotate(model, randomRot, glm::vec3(0.0f, 1.0f, 0.0f));
-
-			objectData.push_back({ model, SnakeStatueIndex });
-		}
-	}
-
-	for (int x = 0; x < gridCount; ++x)
-	{
-		for (int z = 0; z < gridCount; ++z)
-		{
-			glm::vec3 offset = {
-				(x - gridCount / 2) * spacing,
-				0.0f,
-				(z - gridCount / 2) * spacing
-			};
-
-			model = glm::translate(glm::mat4(1.0f), offset);
-			objectData.push_back({ model, groundPlaneIndex });
-		}
-	}
-
-	buffer.createObjectBuffer(objectData.size());
-	buffer.createVisibleIndexBuffer(objectData.size());
-	buffer.updateObjectBuffer(objectData.data(), objectData.size() * sizeof(ObjectData), currentFrame);
-}
-
-void setupLighting(GPUBuffer& buffer, LightingData& lights)
-{
-	lights.dirLight.direction = glm::vec4(-1.0f, -1.0f, -1.0f, 0.0f);
-	lights.dirLight.color = glm::vec4(1.0f);
-
-	buffer.createLightingBuffer(sizeof(LightingData));
-	buffer.updateLightingBuffer(&lights, sizeof(LightingData), currentFrame);
-}
-
-void updateLighting(LightingData& lights, float deltaTime)
-{
-	// Speed of rotation in radians per second
-	constexpr float rotationSpeed = glm::radians(10.0f);
-
-	static float totalTime = 0.0f;
-	totalTime += deltaTime;
-	lights.dirLight.direction.x = glm::cos(totalTime * rotationSpeed);
-	lights.dirLight.direction.z = glm::sin(totalTime * rotationSpeed);
-}
-
-void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime)
-{
 }
 
 std::vector<uint32_t> performFrustumCulling(std::vector<ObjectData>& objectData, const std::vector<Mesh>& allMeshes, const Frustum& frustum)

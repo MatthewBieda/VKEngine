@@ -26,7 +26,7 @@ public:
     float Pitch{ 0.0f };
 
     // Camera options
-    float MovementSpeed{ 10.0f };
+    float MovementSpeed{ 5.0f };
     float MouseSensitivity{ 0.2f };
     float Zoom{ 60.0f };
 
