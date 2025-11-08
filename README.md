@@ -15,11 +15,11 @@
 - **Environment Mapping with Fresnel Reflections**  
   Realistic reflective materials that respond to viewing angles.
 
-- **Transparency Support** *(Alpha Testing + Alpha Blending)*  
-  Supports both cutout materials (e.g., grass, foliage) and blended transparency (e.g., glass, windows).
-
 - **MSAA (Multisample Anti-Aliasing)**  
   Smooths jagged edges for improved visual quality.
+
+- **Extensive Transparency Support** *(Alpha Test, Optimized Alpha-to-Coverage (A2C), Alpha Blend)*  
+  Supports both cutout materials (e.g., grass, foliage) and blended transparency (e.g., glass, windows). Shadows use the naive alpha-test, opaque objects use A2C with sharpening and falloff prevention, true transparent objects are blended in a separate pass.
 
 - **Dynamic Lighting System (Directional / Point Lights)**  
   Real-time lighting with multiple light types.
