@@ -56,6 +56,12 @@ void setupSceneObjects(std::vector<ObjectData>& objectData)
     glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
     uint32_t meshIndex = static_cast<uint32_t>(MeshType::Sponza);
     objectData.push_back({ model, meshIndex });
+
+    // Glass window
+    pos = { 1.0f, 6.0f, 4.0f };
+    model = glm::translate(glm::mat4(1.0f), pos);
+    meshIndex = static_cast<uint32_t>(MeshType::GlassWindow);
+    objectData.push_back({ model, meshIndex });
 }
 
 void updateLighting(LightingData& lights, float deltaTime)
@@ -64,4 +70,11 @@ void updateLighting(LightingData& lights, float deltaTime)
 
 void updateObjects(std::vector<ObjectData>& objectData, const LightingData& lights, float deltaTime)
 {
+    static float rotationAngle = 0.0f;
+    rotationAngle += glm::radians(45.0f) * deltaTime; // 45 degrees per second
+
+    glm::vec3 pos = glm::vec3(objectData[1].model[3]); // Extract current position
+    glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), rotationAngle, glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 translation = glm::translate(glm::mat4(1.0f), pos);
+    objectData[1].model = translation * rotation;
 }

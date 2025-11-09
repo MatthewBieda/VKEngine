@@ -1,8 +1,11 @@
 <h1 align="center">VKEngine</h1>
 <h3 align="center">A 3D game engine created with Vulkan and C++20.</h3>
 
-![VKEngine Latest Version](https://i.ibb.co/xqFrRDYk/Cascaded-Shadow-Maps.jpg)
+![VKEngine Cascaded Shadow Maps](https://i.ibb.co/xqFrRDYk/Cascaded-Shadow-Maps.jpg)
 <p align="center"><i>Demonstrating Cascaded Shadow Maps & MikkTSpace Normal Mapping</i></p>
+
+![VKEngine A2C Foliage Rendering](https://i.ibb.co/p6v946v7/A2-CFinal-Implementation.jpg)
+<p align="center"><i>Demonstrating Optimized Alpha-to-Coverage (A2C) Foliage Rendering</i></p>
 
 ### Current Features:
 
@@ -54,7 +57,7 @@
 - **Bindless Textures**  
   Uses descriptor indexing to give shaders direct access to large arrays of textures, eliminating the need to bind textures individually per draw call.
 
-- **Frustum Culling**
+- **Frustum Culling**  
   High-performance visibility culling using multithreading, SIMD intrinsics & fast AABB transformations to massively improve rendering efficiency.
 
 - **3D Audio**  
@@ -63,22 +66,22 @@
 - **AABB Debug Visualizations**  
   View Mesh-level and Submesh-level bounding boxes in real-time directly in the engine. 
 
-- **MikkTSpace Normal Mapping**
+- **MikkTSpace Normal Mapping**  
   Industry-standard tangent space calculation for accurate surface detail rendering.
 
-- **Cascaded Shadow Maps**
-  High-quality directional light shadows with multiple cascades for ultra high quality shadows. 
+- **Cascaded Shadow Maps**  
+  High-quality directional light shadows with multiple cascades for ultra high quality detail where it matters most. 
 
-### Roadmap:	
+### Version 2 Planned Features:	
 
-**Near-Term Goals**
+- PBR & IBL
 - Skeletal Animations
-- Deferred Rendering (Tiled Deferred + Forward Pass)
-- Post-processing (SSAO, SSR)
-- Object Picking, ImGuizmo integration, scene serialization, CPU metrics (Editor features)
+- Clustered Forward Rendering
+- Object Picking, ImGuizmo integration, scene saving/loading (Editor features)
 
-**Future / Experimental**
-- PBR/IBL, Clustered Shading, Compute Shader post-processing, GPU-Driven Rendering, Mesh Shaders, Hardware Ray Tracing
+### Version 3 Provisional Features:	
+
+- Depth pre-pass, Compute Shader post-processing (SSAO, SSR), Indirect Drawing, Mesh Shaders, Hardware Ray Tracing
 
 ### Devlog 0
 - Motivations & Dependencies
