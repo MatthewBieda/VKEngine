@@ -234,8 +234,8 @@ void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GP
 
 // Scene Selection (Simply uncomment your desired scene, in V2 these files will be a JSON scene representation)
 
-//#include "../Scenes/CSMDemo.hpp"
-#include "../Scenes/SponzaDemo.hpp"
+#include "../Scenes/CSMDemo.hpp"
+//#include "../Scenes/SponzaDemo.hpp"
 
 int main()
 {

@@ -7,6 +7,10 @@
 ![VKEngine A2C Foliage Rendering](https://i.ibb.co/p6v946v7/A2-CFinal-Implementation.jpg)
 <p align="center"><i>Demonstrating Optimized Alpha-to-Coverage (A2C) Foliage Rendering</i></p>
 
+### Version 1 Feature Showcase:
+
+[![VKEngine - V1 Feature Showcase](https://img.youtube.com/vi/HJwzVuw6U88/0.jpg)](https://www.youtube.com/watch?v=HJwzVuw6U88)
+
 ### Current Features:
 
 - **3D Model and Texture Loading**  
