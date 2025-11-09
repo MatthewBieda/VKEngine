@@ -26,7 +26,7 @@ VulkanContext::VulkanContext(GLFWwindow* window) : m_window(window)
 
 	initInstance();
 	volkLoadInstance(m_instance);
-	initDebugMessenger();
+	//initDebugMessenger();
 	createSurface();
 	pickPhysicalDevice();
 	createLogicalDevice();
@@ -44,7 +44,7 @@ VulkanContext::~VulkanContext()
 {
 	vmaDestroyAllocator(m_allocator);
 	vkDestroyDevice(m_device, nullptr);
-	vkDestroyDebugUtilsMessengerEXT(m_instance, m_debugMessenger, nullptr);
+	//vkDestroyDebugUtilsMessengerEXT(m_instance, m_debugMessenger, nullptr);
 	vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
 	vkDestroyInstance(m_instance, nullptr);
 }
@@ -59,7 +59,7 @@ void VulkanContext::initInstance()
 	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
 	appInfo.apiVersion = VK_API_VERSION_1_4;
 
-	std::vector<const char*> layers = { "VK_LAYER_KHRONOS_validation" };
+	std::vector<const char*> layers = {};
 	std::vector<const char*> extensions = { "VK_EXT_debug_utils", "VK_KHR_surface", "VK_KHR_win32_surface" };
 
 	VkInstanceCreateInfo instanceCreateInfo{};

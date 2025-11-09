@@ -85,7 +85,7 @@
 
 ### Version 3 Provisional Features:	
 
-- Depth pre-pass, Compute Shader post-processing (SSAO, SSR), Indirect Drawing, Mesh Shaders, Hardware Ray Tracing
+- Depth pre-pass, Compute Shader post-processing (SSAO, SSR), Jolt Physics integration, Indirect Drawing, Mesh Shaders, Hardware Ray Tracing
 
 ### Devlog 0
 - Motivations & Dependencies

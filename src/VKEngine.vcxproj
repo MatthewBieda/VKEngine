@@ -103,7 +103,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)Include;$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb;$(SolutionDir)ThirdParty\tinyOBJ;$(SolutionDir)ThirdParty\ImGui;$(SolutionDir)ThirdParty\SoLoud\include;$(SolutionDir)ThirdParty\SoLoud\src\backend\miniaudio;$(SolutionDir)ThirdParty\SoLoud\src\audiosource\wav;$(SolutionDir)ThirdParty\MikkTSpace\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(SolutionDir)Include;$(SolutionDir)ThirdParty;$(SolutionDir)ThirdParty\GLFW;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb;$(SolutionDir)ThirdParty\tinyOBJ;$(SolutionDir)ThirdParty\ImGui;$(SolutionDir)ThirdParty\SoLoud\include;$(SolutionDir)ThirdParty\SoLoud\src\backend\miniaudio;$(SolutionDir)ThirdParty\SoLoud\src\audiosource\wav;$(SolutionDir)ThirdParty\MikkTSpace\include</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <TreatWarningAsError>true</TreatWarningAsError>
@@ -124,7 +124,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)Include;$(SolutionDir)ThirdParty\GLFW\include;$(VULKAN_SDK)\Include;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb;$(SolutionDir)ThirdParty\tinyOBJ;$(SolutionDir)ThirdParty\ImGui;$(SolutionDir)ThirdParty\SoLoud\include;$(SolutionDir)ThirdParty\SoLoud\src\backend\miniaudio;$(SolutionDir)ThirdParty\SoLoud\src\audiosource\wav;$(SolutionDir)ThirdParty\MikkTSpace\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(SolutionDir)Include;$(SolutionDir)ThirdParty;$(SolutionDir)ThirdParty\GLFW;$(SolutionDir)ThirdParty\Volk;$(SolutionDir)ThirdParty\glm;$(SolutionDir)ThirdParty\VMA;$(SolutionDir)ThirdParty\stb;$(SolutionDir)ThirdParty\tinyOBJ;$(SolutionDir)ThirdParty\ImGui;$(SolutionDir)ThirdParty\SoLoud\include;$(SolutionDir)ThirdParty\SoLoud\src\backend\miniaudio;$(SolutionDir)ThirdParty\SoLoud\src\audiosource\wav;$(SolutionDir)ThirdParty\MikkTSpace\include</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <TreatWarningAsError>true</TreatWarningAsError>

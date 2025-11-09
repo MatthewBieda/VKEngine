@@ -152,10 +152,11 @@ struct DrawLists
 	std::vector<std::vector<DrawCommand>> transparent;
 };
 
+// Uses 720p as a safe default, increase if you would like a higher resolution
 struct AppState 
 {
-	uint32_t windowWidth = 2560;
-	uint32_t windowHeight = 1440;
+	uint32_t windowWidth = 1280;
+	uint32_t windowHeight = 720;
 	bool framebufferResized = false;
 	bool cursorEnabled = false;
 	bool spacePressedLastFrame = false;
