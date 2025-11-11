@@ -78,14 +78,19 @@
 
 ### Version 2 Planned Features:	
 
-- PBR & IBL
-- Skeletal Animations
-- Clustered Forward Rendering
-- Object Picking, ImGuizmo integration, scene saving/loading (Editor features)
+- Physically Based Rendering (PBR) & Image-Based Lighting (IBL)  
+- Skeletal Animations  
+- Clustered Forward Rendering  
+- Editor Improvements: Object picking, ImGuizmo integration, Scene saving/loading  
 
 ### Version 3 Provisional Features:	
 
-- Depth pre-pass, Compute Shader post-processing (SSAO, SSR), Jolt Physics integration, Indirect Drawing, Mesh Shaders, Hardware Ray Tracing
+- Depth pre-pass & Visibility Buffer (Thin G-Buffer)  
+- Async Compute & Multithreaded command buffer recording  
+- Compute Shader post-processing (SSAO, SSR, Bloom etc.)  
+- Jolt Physics integration  
+- GPU-Driven Rendering (Indirect Drawing)  
+- Hardware Ray Tracing  
 
 ### Devlog 0
 - Motivations & Dependencies
