@@ -225,6 +225,7 @@
     <ClInclude Include="..\Include\Utils.hpp" />
     <ClInclude Include="..\Include\Vertex.hpp" />
     <ClInclude Include="..\Include\VulkanContext.hpp" />
+    <ClInclude Include="..\Scenes\Outdoors.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

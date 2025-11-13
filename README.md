@@ -1,11 +1,17 @@
 <h1 align="center">VKEngine</h1>
 <h3 align="center">A 3D game engine created with Vulkan and C++20.</h3>
 
-![VKEngine Cascaded Shadow Maps](https://i.ibb.co/xqFrRDYk/Cascaded-Shadow-Maps.jpg)
+![Cascaded Shadow Maps](https://i.ibb.co/xqFrRDYk/Cascaded-Shadow-Maps.jpg)
 <p align="center"><i>Demonstrating Cascaded Shadow Maps & MikkTSpace Normal Mapping</i></p>
 
-![VKEngine A2C Foliage Rendering](https://i.ibb.co/p6v946v7/A2-CFinal-Implementation.jpg)
+![A2C Foliage Rendering](https://i.ibb.co/p6v946v7/A2-CFinal-Implementation.jpg)
 <p align="center"><i>Demonstrating Optimized Alpha-to-Coverage (A2C) Foliage Rendering</i></p>
+
+![Terrain Experiments](https://i.ibb.co/mVhhnZnY/Terrain-Experiments16k.jpg)
+<p align="center"><i>Terrain Experiments</i></p>
+
+![Alpha-tested Shadows](https://i.ibb.co/YGzr7df/Flower-Shadows.jpg)
+<p align="center"><i>Crisp alpha-tested shadows</i></p>
 
 ### Version 1 Feature Showcase:
 

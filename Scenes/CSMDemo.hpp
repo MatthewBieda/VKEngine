@@ -1,5 +1,7 @@
 #pragma once
 
+SceneConfig scene = { 0.1f, 200.0f, "YokohamaCity"};
+
 void setupLighting(LightingData& lights)
 {
 	lights.dirLight.direction = glm::vec4(-1.0f, -1.0f, -1.0f, 0.0f);

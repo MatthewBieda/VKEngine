@@ -166,9 +166,16 @@ struct AppState
 
 Camera camera;
 
+struct SceneConfig {
+	float nearPlane;
+	float farPlane;
+	std::string skybox;
+};
+extern SceneConfig scene;
+
+// Timer for CPU benchmarking
 using Clock = std::chrono::high_resolution_clock;
 using ms = std::chrono::duration<double, std::milli>;
-
 struct ScopedTimer
 {
 	const char* label;
@@ -206,7 +213,8 @@ enum class MeshType
 	GroundPlane,
 	Cube,
 	BrickWall,
-	SnakeStatue
+	SnakeStatue,
+	Terrain
 };
 
 void setupSceneObjects(std::vector<ObjectData>& objectData);
@@ -235,8 +243,9 @@ void recreateSwapchainResources(VulkanContext& context, Swapchain& swapchain, GP
 
 // Scene Selection (Simply uncomment your desired scene, in V2 these files will be a JSON scene representation)
 
-#include "../Scenes/CSMDemo.hpp"
+//#include "../Scenes/CSMDemo.hpp"
 //#include "../Scenes/SponzaDemo.hpp"
+#include "../Scenes/Outdoors.hpp"
 
 int main()
 {
@@ -261,12 +270,12 @@ int main()
 	}
 
 	std::array<std::string, 6> skyBoxFaces = {
-		"../Textures/Skyboxes/YokohamaCity/posx.jpg",
-		"../Textures/Skyboxes/YokohamaCity/negx.jpg",
-		"../Textures/Skyboxes/YokohamaCity/posy.jpg",
-		"../Textures/Skyboxes/YokohamaCity/negy.jpg",
-		"../Textures/Skyboxes/YokohamaCity/posz.jpg",
-		"../Textures/Skyboxes/YokohamaCity/negz.jpg",
+		"../Textures/Skyboxes/" + scene.skybox + "/posx.jpg",
+		"../Textures/Skyboxes/" + scene.skybox + "/negx.jpg",
+		"../Textures/Skyboxes/" + scene.skybox + "/posy.jpg",
+		"../Textures/Skyboxes/" + scene.skybox + "/negy.jpg",
+		"../Textures/Skyboxes/" + scene.skybox + "/posz.jpg",
+		"../Textures/Skyboxes/" + scene.skybox + "/negz.jpg",
 	};
 	image.createCubemap(skyBoxFaces);
 
@@ -279,6 +288,7 @@ int main()
 	uint32_t cube = loadModel("../Models/Cube/cube.obj", image);
 	uint32_t brickWall = loadModel("../Models/BrickWall/BrickWall.obj", image);
 	uint32_t snakeStatue = loadModel("../Models/SnakeStatue/SnakeStatue.obj", image);
+	uint32_t terrainMesh = loadModel("../Models/Terrain/Terrain.obj", image);
 
 	// Create buffers and populate scene
 	GPUBuffer buffer(context, commands, allVertices, allIndices, sizeof(ObjectData), MAX_FRAMES_IN_FLIGHT);
@@ -560,7 +570,7 @@ int main()
 		pc.view = camera.GetViewMatrix();
 		pc.proj = glm::perspective(glm::radians(camera.Zoom),
 			(float)appState.windowWidth / (float)appState.windowHeight,
-			0.1f, 200.0f);
+			scene.nearPlane, scene.farPlane);
 		pc.proj[1][1] *= -1; // Flip Y for Vulkan
 
 		// Calculate the new shadow cascade matrices based on the current camera view/proj
@@ -572,8 +582,8 @@ int main()
 			camera.Zoom,
 			(float)appState.windowWidth / (float)appState.windowHeight,
 			glm::normalize(glm::vec3(lights.dirLight.direction)),
-			0.1f,
-			200.0f,
+			scene.nearPlane,
+			scene.farPlane,
 			imgui.cascadeLambda // Toggle lambda in ImGui (0.80f default)
 		);
 		const std::vector<ShadowCascades::CascadeData>& cascades = shadowCascades.getCascades();
@@ -805,8 +815,9 @@ int main()
 
 		vkCmdDraw(cmd, 36, 1, 0, 0);
 		vkCmdEndDebugUtilsLabelEXT(cmd);
+		// -- END SKYBOX RENDER PASS --
 
-		// -- TRANSPARENCY RENDER PASS --
+		// -- BEGIN TRANSPARENCY RENDER PASS --
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &transparentPassLabel);
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, transparentPipeline.getPipeline());
 
@@ -878,7 +889,7 @@ int main()
 			vkCmdDrawIndexed(cmd, drawCmd.indexCount, 1, drawCmd.firstIndex, drawCmd.vertexOffset, visibleIndex);
 		}
 		vkCmdEndDebugUtilsLabelEXT(cmd);
-		// -- END SKYBOX RENDER PASS --
+		// -- END TRANSPARENCY RENDER PASS --
 
 		// -- BEGIN DEBUG RENDER PASS --
 		vkCmdBeginDebugUtilsLabelEXT(cmd, &debugPassLabel);

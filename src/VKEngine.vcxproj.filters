@@ -247,5 +247,8 @@
     <ClInclude Include="..\Include\ShadowCascades.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\Scenes\Outdoors.hpp">
+      <Filter>Scenes</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

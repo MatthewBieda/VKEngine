@@ -1,5 +1,7 @@
 #pragma once
 
+SceneConfig scene = { 0.1f, 50.0f, "YokohamaCity" };
+
 void setupLighting(LightingData& lights)
 {
     // Directional light
